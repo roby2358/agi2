@@ -15,7 +15,7 @@ import torch
 from pathlib import Path
 
 from src.model import GPT2Model
-from src.tokenizer import Tokenizer
+from src.tokenizer import BasicTokenizer
 from src.training import train_model
 from src.config import ModelConfig
 
@@ -82,9 +82,22 @@ def main():
     print(f"Using device: {device}")
     print(f"Training on corpus: {corpus_path}")
     
-    # Initialize model and tokenizer
+    # Initialize tokenizer and build vocabulary first
+    tokenizer = BasicTokenizer()
+    
+    # Load a sample of text to build vocabulary
+    print("Building vocabulary from corpus...")
+    with open(corpus_path, 'r', encoding='utf-8') as f:
+        sample_text = f.read()[:50000]  # First 50k characters for vocab building
+    
+    tokenizer.fit([sample_text])
+    actual_vocab_size = tokenizer.vocab_size
+    
+    print(f"Vocabulary built with {actual_vocab_size} tokens")
+    
+    # Initialize model with correct vocabulary size
     config = ModelConfig(
-        vocab_size=50000,
+        vocab_size=actual_vocab_size,  # Use actual vocab size from tokenizer
         n_positions=1024,
         n_embd=768,
         n_layer=12,
@@ -92,7 +105,6 @@ def main():
     )
     
     model = GPT2Model(config)
-    tokenizer = Tokenizer()
     
     print(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters")
     
@@ -100,6 +112,7 @@ def main():
     try:
         training_history = train_model(
             model=model,
+            tokenizer=tokenizer,  # Pass the fitted tokenizer
             corpus_path=str(corpus_path),
             epochs=args.epochs,
             batch_size=args.batch_size,

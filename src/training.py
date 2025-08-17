@@ -75,6 +75,7 @@ def train_epoch(
 
 def train_model(
     model: nn.Module,
+    tokenizer,
     corpus_path: str,
     epochs: int,
     batch_size: int = 4,
@@ -89,6 +90,7 @@ def train_model(
     
     Args:
         model: The GPT-2 model to train
+        tokenizer: Pre-fitted tokenizer to use for text processing
         corpus_path: Path to the text corpus file
         epochs: Number of training epochs
         batch_size: Batch size for training
@@ -104,17 +106,8 @@ def train_model(
     device = torch.device(device)
     model = model.to(device)
     
-    # Initialize tokenizer and dataset
-    from .tokenizer import BasicTokenizer
+    # Import dataset class
     from .dataset import TextDataset
-    
-    tokenizer = BasicTokenizer()
-    
-    # Load a sample of text to build vocabulary
-    with open(corpus_path, 'r', encoding='utf-8') as f:
-        sample_text = f.read()[:10000]  # First 10k characters for vocab
-    
-    tokenizer.fit([sample_text])
     
     # Create dataset and dataloader
     dataset = TextDataset(corpus_path, tokenizer, seq_len)
