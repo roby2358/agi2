@@ -29,6 +29,12 @@ def main():
     print("Checking CUDA availability for training...")
     cuda_status = check_cuda_availability(verbose=True)
     
+    # Print GPU memory monitoring command
+    print("\nTo monitor GPU memory during training, use:")
+    print("  nvidia-smi -l 1  # Updates every 1 second")
+    print("  watch -n 1 nvidia-smi  # Updates every 1 second (Linux/Mac)")
+    print("  # On Windows, use Task Manager > Performance > GPU\n")
+    
     parser = argparse.ArgumentParser(description="Train AGI2 model on a corpus")
     parser.add_argument(
         "corpus_path", 
@@ -44,8 +50,8 @@ def main():
     parser.add_argument(
         "--batch-size", 
         type=int, 
-        default=4, 
-        help="Training batch size (default: 4)"
+        default=12, 
+        help="Training batch size (default: 12)"
     )
     parser.add_argument(
         "--learning-rate", 
