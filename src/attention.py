@@ -75,6 +75,11 @@ class MultiHeadAttention(nn.Module):
         
         # Apply mask if provided
         if mask is not None:
+            # Ensure mask is on the same device and properly shaped
+            mask = mask.to(query.device)
+            # For causal mask, we need to expand it to match the attention scores shape
+            if mask.dim() == 2:  # (seq_len, seq_len)
+                mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
             scores = scores.masked_fill(mask == 0, -1e9)
         
         # Apply softmax and dropout
@@ -91,15 +96,16 @@ class MultiHeadAttention(nn.Module):
         
         return self.w_o(context)
     
-    def create_causal_mask(self, seq_len: int) -> torch.Tensor:
+    def create_causal_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
         """
         Create causal mask for autoregressive generation.
         
         Args:
             seq_len: Length of the sequence
+            device: Device to create the mask on
             
         Returns:
             Causal mask tensor of shape (seq_len, seq_len)
         """
-        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
         return ~mask  # Invert so True means "attend to"

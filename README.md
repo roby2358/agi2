@@ -11,6 +11,31 @@ A complete implementation of GPT-2 for training custom language models from text
 - **Interactive Mode**: Chat-like interface for testing trained models
 - **Modular Design**: Clean, testable code structure
 
+## Quick Start
+
+### Command Line Training
+
+```bash
+# Basic training
+python agi2_train.py corpus.txt
+
+# Training with custom parameters
+python agi2_train.py corpus.txt --epochs 20 --batch-size 8 --learning-rate 1e-4
+
+# Resume training from checkpoint
+python agi2_train.py corpus.txt --resume trained_model_epoch_10.pt --epochs 5
+```
+
+### Available Options
+
+- `--epochs`: Number of training epochs (default: 10)
+- `--batch-size`: Training batch size (default: 4)
+- `--learning-rate`: Learning rate (default: 3e-4)
+- `--seq-len`: Sequence length (default: 1024)
+- `--save-path`: Model save path (default: trained_model.pth)
+- `--resume`: Resume from checkpoint file
+- `--device`: Training device: cpu, cuda, or auto (default: auto)
+
 ## Project Structure
 
 ```
@@ -84,12 +109,12 @@ The training module provides flexible training options. Here's how to train a mo
 
 ```python
 from src.model import GPT2Model
-from src.tokenizer import Tokenizer
+from src.tokenizer import BasicTokenizer
 from src.training import train_model
-from src.config import ModelConfig
+from src.config import GPT2Config
 
 # Initialize model and tokenizer
-config = ModelConfig(
+config = GPT2Config(
     vocab_size=50000,
     n_positions=1024,
     n_embd=768,
@@ -98,7 +123,7 @@ config = ModelConfig(
 )
 
 model = GPT2Model(config)
-tokenizer = Tokenizer()
+tokenizer = BasicTokenizer()
 
 # Train the model
 training_history = train_model(
@@ -129,6 +154,37 @@ training_history = train_model(
 4. **Save Checkpoints**: The training function automatically saves the model
 5. **GPU Memory**: Adjust batch_size based on your GPU memory capacity
 
+### Resuming Training
+
+You can resume training from where you left off using any checkpoint file:
+
+```bash
+# Resume from a specific checkpoint
+python agi2_train.py corpus.txt --resume trained_model_epoch_10.pt
+
+# Resume and continue for 5 more epochs
+python agi2_train.py corpus.txt --resume trained_model_epoch_15.pt --epochs 5
+```
+
+**What gets resumed:**
+- Model weights and parameters
+- Training progress (continues from the checkpoint epoch)
+- Tokenizer vocabulary (if saved in checkpoint)
+
+**What gets reset:**
+- Optimizer state (reinitialized for simplicity)
+- Learning rate (uses the value from command line)
+
+**Checkpoint files:**
+- `{save_path}_epoch_{N}.pt` - Saved every 5 epochs
+- `{save_path}_final.pt` - Final model after training completes
+
+**Resume workflow:**
+1. Training stops or is interrupted
+2. Use `--resume` with the latest checkpoint file
+3. Training continues from that epoch
+4. New checkpoints are created with updated epoch numbers
+
 ## Text Generation
 
 ### Basic Generation
@@ -137,11 +193,11 @@ Generate text from a trained model:
 
 ```python
 from src.generation import generate_text
-from src.tokenizer import Tokenizer
+from src.tokenizer import BasicTokenizer
 
 # Load your trained model
 model = torch.load("trained_model.pth")
-tokenizer = Tokenizer()
+tokenizer = BasicTokenizer()
 
 # Generate text
 generated_text = generate_text(
@@ -216,10 +272,10 @@ print(response)
 Adjust the model architecture in `src/config.py`:
 
 ```python
-from src.config import ModelConfig
+from src.config import GPT2Config
 
 # Small model (faster training, less memory)
-small_config = ModelConfig(
+small_config = GPT2Config(
     vocab_size=30000,
     n_positions=512,
     n_embd=384,
@@ -228,7 +284,7 @@ small_config = ModelConfig(
 )
 
 # Large model (better quality, more memory)
-large_config = ModelConfig(
+large_config = GPT2Config(
     vocab_size=50000,
     n_positions=1024,
     n_embd=1024,

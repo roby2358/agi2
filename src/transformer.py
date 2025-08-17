@@ -65,6 +65,9 @@ class TransformerBlock(nn.Module):
         # Self-attention with residual connection and layer norm
         residual = x
         x = self.ln1(x)
+        # Ensure mask is on the same device as x
+        if mask is not None:
+            mask = mask.to(x.device)
         x = self.attention(x, x, x, mask)
         x = self.dropout(x)
         x = residual + x

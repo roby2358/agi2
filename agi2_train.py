@@ -7,6 +7,7 @@ Usage:
 
 Example:
     python agi2_train.py data/corpus.txt
+    python agi2_train.py data/corpus.txt --resume trained_model_epoch_10.pt
 """
 
 import sys
@@ -17,10 +18,16 @@ from pathlib import Path
 from src.model import GPT2Model
 from src.tokenizer import BasicTokenizer
 from src.training import train_model
-from src.config import ModelConfig
+from src.config import GPT2Config
+from src.utils import load_checkpoint
+from src.cuda_utils import check_cuda_availability, get_optimal_device
 
 
 def main():
+    # Check CUDA availability at startup
+    print("Checking CUDA availability for training...")
+    cuda_status = check_cuda_availability(verbose=True)
+    
     parser = argparse.ArgumentParser(description="Train AGI2 model on a corpus")
     parser.add_argument(
         "corpus_path", 
@@ -58,6 +65,11 @@ def main():
         help="Path to save the trained model (default: trained_model.pth)"
     )
     parser.add_argument(
+        "--resume", 
+        type=str, 
+        help="Path to checkpoint file to resume training from"
+    )
+    parser.add_argument(
         "--device", 
         type=str, 
         choices=["cpu", "cuda", "auto"], 
@@ -73,11 +85,16 @@ def main():
         print(f"Error: Corpus file not found: {corpus_path}")
         sys.exit(1)
     
-    # Determine device
-    if args.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = args.device
+    # Validate resume checkpoint if provided
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.exists():
+            print(f"Error: Resume checkpoint not found: {resume_path}")
+            sys.exit(1)
+        print(f"Resuming training from checkpoint: {resume_path}")
+    
+    # Determine device using our utility
+    device = get_optimal_device(args.device)
     
     print(f"Using device: {device}")
     print(f"Training on corpus: {corpus_path}")
@@ -96,7 +113,7 @@ def main():
     print(f"Vocabulary built with {actual_vocab_size} tokens")
     
     # Initialize model with correct vocabulary size
-    config = ModelConfig(
+    config = GPT2Config(
         vocab_size=actual_vocab_size,  # Use actual vocab size from tokenizer
         n_positions=1024,
         n_embd=768,
@@ -107,6 +124,25 @@ def main():
     model = GPT2Model(config)
     
     print(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters")
+    
+    # Resume from checkpoint if specified
+    start_epoch = 0
+    if args.resume:
+        print(f"Loading checkpoint from {args.resume}...")
+        checkpoint = torch.load(args.resume, map_location=device)
+        
+        # Load model state
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded model state from epoch {checkpoint['epoch']}")
+        
+        # Load tokenizer if it exists in checkpoint
+        if 'tokenizer' in checkpoint:
+            tokenizer = checkpoint['tokenizer']
+            print("Loaded tokenizer from checkpoint")
+        
+        # Calculate starting epoch
+        start_epoch = checkpoint['epoch']
+        print(f"Resuming training from epoch {start_epoch + 1}")
     
     # Train the model
     try:
@@ -119,7 +155,8 @@ def main():
             learning_rate=args.learning_rate,
             seq_len=args.seq_len,
             device=device,
-            save_path=args.save_path
+            save_path=args.save_path,
+            start_epoch=start_epoch  # Pass starting epoch
         )
         
         print(f"Training completed successfully!")

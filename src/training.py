@@ -51,7 +51,7 @@ def train_epoch(
         logits = model(input_ids)
         
         # Calculate loss
-        loss = criterion(logits.view(-1, logits.size(-1)), target_ids.view(-1))
+        loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
         
         # Backward pass
         loss.backward()
@@ -68,7 +68,14 @@ def train_epoch(
         
         # Print progress every 100 batches
         if (batch_idx + 1) % 100 == 0:
-            print(f"Batch {batch_idx + 1}/{len(dataloader)}, Loss: {loss.item():.4f}")
+            # Get GPU memory info if available
+            gpu_memory_info = ""
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+                reserved = torch.cuda.memory_reserved() / 1024**3   # GB
+                gpu_memory_info = f", GPU: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
+            
+            print(f"Batch {batch_idx + 1}/{len(dataloader)}, Loss: {loss.item():.4f}{gpu_memory_info}")
     
     return total_loss / num_batches
 
@@ -83,6 +90,7 @@ def train_model(
     seq_len: int = 1024,
     device: str = "cpu",
     save_path: Optional[str] = None,
+    start_epoch: int = 0,
     **kwargs
 ) -> Dict[str, List[float]]:
     """
@@ -98,6 +106,7 @@ def train_model(
         seq_len: Sequence length for training
         device: Device to train on ('cpu' or 'cuda')
         save_path: Path to save the trained model
+        start_epoch: Epoch to start training from (for resuming)
         **kwargs: Additional arguments
         
     Returns:
@@ -123,22 +132,39 @@ def train_model(
         'epoch_times': []
     }
     
+    # If resuming, load optimizer state from checkpoint
+    if start_epoch > 0:
+        print(f"Resuming training from epoch {start_epoch + 1}")
+        print(f"Note: Optimizer state will be reinitialized for simplicity")
+    
     print(f"Starting training for {epochs} epochs...")
     print(f"Model parameters: {model.get_num_params():,}")
     print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}")
     print(f"Learning rate: {learning_rate}")
     
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, start_epoch + epochs):
         start_time = time.time()
         
-        print(f"\nEpoch {epoch + 1}/{epochs}")
+        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs}")
         print("-" * 50)
+        
+        # Show GPU memory before training
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"GPU Memory before training: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
         
         # Train for one epoch
         avg_loss = train_epoch(model, dataloader, optimizer, criterion, device)
         
         epoch_time = time.time() - start_time
+        
+        # Show GPU memory after training
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"GPU Memory after training: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
         
         # Record history
         history['train_loss'].append(avg_loss)
@@ -164,7 +190,7 @@ def train_model(
     if save_path:
         final_path = f"{save_path}_final.pt"
         torch.save({
-            'epoch': epochs,
+            'epoch': start_epoch + epochs,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': history['train_loss'][-1],

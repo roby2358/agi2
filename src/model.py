@@ -91,11 +91,13 @@ class GPT2Model(nn.Module):
         """
         batch_size, seq_len = input_ids.size()
         
-        # Create causal mask for autoregressive generation
-        causal_mask = self._create_causal_mask(seq_len)
+        # Create causal mask for autoregressive generation on the same device as input_ids
+        causal_mask = self._create_causal_mask(seq_len, input_ids.device)
         
         # Apply attention mask if provided
         if attention_mask is not None:
+            # Ensure attention_mask is on the same device
+            attention_mask = attention_mask.to(input_ids.device)
             # Combine causal mask with attention mask
             mask = causal_mask & attention_mask.unsqueeze(1)
         else:
@@ -111,6 +113,11 @@ class GPT2Model(nn.Module):
         
         # Pass through transformer blocks
         for transformer_block in self.transformer_blocks:
+            # Ensure mask is properly shaped for transformer blocks
+            if mask is not None:
+                # For causal mask, we need to expand it to match the attention scores shape
+                if mask.dim() == 2:  # (seq_len, seq_len)
+                    mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
             x = transformer_block(x, mask)
         
         # Final layer normalization
@@ -125,9 +132,9 @@ class GPT2Model(nn.Module):
         
         return logits
     
-    def _create_causal_mask(self, seq_len: int) -> torch.Tensor:
+    def _create_causal_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
         """Create causal mask for autoregressive generation."""
-        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
         return ~mask  # Invert so True means "attend to"
     
     def get_num_params(self) -> int:

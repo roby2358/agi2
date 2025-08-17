@@ -13,11 +13,18 @@ import sys
 import torch
 from pathlib import Path
 
+from src.model import GPT2Model
+from src.tokenizer import BasicTokenizer
 from src.interactive import InteractivePrompt
-from src.tokenizer import Tokenizer
+from src.config import GPT2Config
+from src.cuda_utils import check_cuda_availability, get_optimal_device
 
 
 def main():
+    # Check CUDA availability at startup
+    print("Checking CUDA availability for interactive chat...")
+    cuda_status = check_cuda_availability(verbose=True)
+    
     # Default model path
     model_path = Path("trained_model.pth")
     
@@ -26,8 +33,8 @@ def main():
         print("Please train a model first using agi2_train.py")
         sys.exit(1)
     
-    # Determine device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Determine device using our utility
+    device = get_optimal_device("auto")
     print(f"Using device: {device}")
     print(f"Loading model from: {model_path}")
     
@@ -37,7 +44,7 @@ def main():
         model.eval()
         
         # Initialize tokenizer
-        tokenizer = Tokenizer()
+        tokenizer = BasicTokenizer()
         
         # Create interactive session
         chat = InteractivePrompt(
