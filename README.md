@@ -23,7 +23,7 @@ python agi2_train.py corpus.txt
 python agi2_train.py corpus.txt --epochs 20 --batch-size 8 --learning-rate 1e-4
 
 # Resume training from checkpoint
-python agi2_train.py corpus.txt --resume trained_model_epoch_10.pt --epochs 5
+python agi2_train.py corpus.txt --resume trained/model.pt_epoch_10.pt --epochs 5
 ```
 
 ### Available Options
@@ -32,7 +32,7 @@ python agi2_train.py corpus.txt --resume trained_model_epoch_10.pt --epochs 5
 - `--batch-size`: Training batch size (default: 4)
 - `--learning-rate`: Learning rate (default: 3e-4)
 - `--seq-len`: Sequence length (default: 1024)
-- `--save-path`: Model save path (default: trained_model.pth)
+- `--model-name`: Model name for saving (default: model) - files will be saved to trained/{model-name}.pt
 - `--resume`: Resume from checkpoint file
 - `--device`: Training device: cpu, cuda, or auto (default: auto)
 
@@ -134,7 +134,7 @@ training_history = train_model(
     learning_rate=3e-4,
     seq_len=1024,
     device="cuda" if torch.cuda.is_available() else "cpu",
-    save_path="trained_model.pth"
+    save_path="model"
 )
 ```
 
@@ -160,10 +160,10 @@ You can resume training from where you left off using any checkpoint file:
 
 ```bash
 # Resume from a specific checkpoint
-python agi2_train.py corpus.txt --resume trained_model_epoch_10.pt
+python agi2_train.py corpus.txt --resume trained/model.pt_epoch_10.pt
 
 # Resume and continue for 5 more epochs
-python agi2_train.py corpus.txt --resume trained_model_epoch_15.pt --epochs 5
+python agi2_train.py corpus.txt --resume trained/model.pt_epoch_15.pt --epochs 5
 ```
 
 **What gets resumed:**
@@ -176,8 +176,8 @@ python agi2_train.py corpus.txt --resume trained_model_epoch_15.pt --epochs 5
 - Learning rate (uses the value from command line)
 
 **Checkpoint files:**
-- `{save_path}_epoch_{N}.pt` - Saved every 5 epochs
-- `{save_path}_final.pt` - Final model after training completes
+- `trained/{model_name}.pt_epoch_{N}.pt` - Saved every 5 epochs
+- `trained/{model_name}.pt` - Final model after training completes
 
 **Resume workflow:**
 1. Training stops or is interrupted
@@ -196,7 +196,7 @@ from src.generation import generate_text
 from src.tokenizer import BasicTokenizer
 
 # Load your trained model
-model = torch.load("trained_model.pth")
+model = torch.load("trained/model.pt")
 tokenizer = BasicTokenizer()
 
 # Generate text

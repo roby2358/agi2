@@ -7,7 +7,8 @@ Usage:
 
 Example:
     python agi2_train.py data/corpus.txt
-    python agi2_train.py data/corpus.txt --resume trained_model_epoch_10.pt
+    python agi2_train.py data/corpus.txt --resume trained/model.pt_epoch_10.pt
+    python agi2_train.py data/corpus.txt --model-name my_model
 """
 
 import sys
@@ -59,10 +60,10 @@ def main():
         help="Sequence length (default: 1024)"
     )
     parser.add_argument(
-        "--save-path", 
+        "--model-name", 
         type=str, 
-        default="trained_model.pth", 
-        help="Path to save the trained model (default: trained_model.pth)"
+        default="model", 
+        help="Name for the model (default: model) - files will be saved to trained/{model-name}.pt and trained/{model-name}.pt_epoch_N.pt"
     )
     parser.add_argument(
         "--resume", 
@@ -155,12 +156,12 @@ def main():
             learning_rate=args.learning_rate,
             seq_len=args.seq_len,
             device=device,
-            save_path=args.save_path,
+            save_path=args.model_name,
             start_epoch=start_epoch  # Pass starting epoch
         )
         
         print(f"Training completed successfully!")
-        print(f"Model saved to: {args.save_path}")
+        print(f"Model saved to: trained/{args.model_name}.pt")
         
     except Exception as e:
         print(f"Training failed with error: {e}")

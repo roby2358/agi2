@@ -26,7 +26,7 @@ def main():
     cuda_status = check_cuda_availability(verbose=True)
     
     # Default model path
-    model_path = Path("trained_model.pth")
+    model_path = Path("trained/model.pt")
     
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")

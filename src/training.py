@@ -10,6 +10,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict, List, Optional, Tuple
 import time
+from pathlib import Path
+from .dataset import TextDataset
 
 
 def train_epoch(
@@ -105,7 +107,7 @@ def train_model(
         learning_rate: Learning rate for optimizer
         seq_len: Sequence length for training
         device: Device to train on ('cpu' or 'cuda')
-        save_path: Path to save the trained model
+        save_path: Model name for saving (files will be saved to trained/{save_path}.pt)
         start_epoch: Epoch to start training from (for resuming)
         **kwargs: Additional arguments
         
@@ -115,8 +117,7 @@ def train_model(
     device = torch.device(device)
     model = model.to(device)
     
-    # Import dataset class
-    from .dataset import TextDataset
+    # Create dataset and dataloader
     
     # Create dataset and dataloader
     dataset = TextDataset(corpus_path, tokenizer, seq_len)
@@ -142,6 +143,11 @@ def train_model(
     print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}")
     print(f"Learning rate: {learning_rate}")
+    
+    # Create trained directory if it doesn't exist
+    if save_path:
+        import os
+        os.makedirs("trained", exist_ok=True)
     
     for epoch in range(start_epoch, start_epoch + epochs):
         start_time = time.time()
@@ -175,7 +181,9 @@ def train_model(
         
         # Save checkpoint
         if save_path and (epoch + 1) % 5 == 0:
-            checkpoint_path = f"{save_path}_epoch_{epoch + 1}.pt"
+            # Extract just the filename from the save_path to avoid path issues
+            model_name = Path(save_path).stem if '/' in str(save_path) or '\\' in str(save_path) else save_path
+            checkpoint_path = f"trained/{model_name}.pt_epoch_{epoch + 1}.pt"
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
@@ -188,7 +196,9 @@ def train_model(
     
     # Save final model
     if save_path:
-        final_path = f"{save_path}_final.pt"
+        # Extract just the filename from the save_path to avoid path issues
+        model_name = Path(save_path).stem if '/' in str(save_path) or '\\' in str(save_path) else save_path
+        final_path = f"trained/{model_name}.pt"
         torch.save({
             'epoch': start_epoch + epochs,
             'model_state_dict': model.state_dict(),

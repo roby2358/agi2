@@ -35,8 +35,8 @@ def main():
     parser.add_argument(
         "--model-path", 
         type=str, 
-        default="trained_model.pth", 
-        help="Path to the trained model file (default: trained_model.pth)"
+                default="trained/model.pt",
+        help="Path to the trained model file (default: trained/model.pt)"
     )
     parser.add_argument(
         "--max-length", 

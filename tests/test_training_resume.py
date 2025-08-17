@@ -65,7 +65,9 @@ class TestResumeTraining:
                 )
                 
                 # Check that checkpoint was created
-                checkpoint_path = f"{save_path}_epoch_5.pt"
+                # Extract model name from save_path for new directory structure
+                model_name = os.path.basename(save_path).replace('.pt', '')
+                checkpoint_path = f"trained/{model_name}.pt_epoch_5.pt"
                 assert os.path.exists(checkpoint_path), "Checkpoint should be created"
                 
                 # Load checkpoint and verify contents
@@ -94,7 +96,7 @@ class TestResumeTraining:
                 assert len(history2['train_loss']) == 1, "Should have trained for 1 epoch"
                 
                 # Check final model was saved
-                final_path = f"{save_path}_final.pt"
+                final_path = f"trained/{model_name}.pt"
                 assert os.path.exists(final_path), "Final model should be saved"
                 
                 final_checkpoint = torch.load(final_path, map_location='cpu', weights_only=False)
