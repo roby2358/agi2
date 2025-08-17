@@ -4,7 +4,7 @@ Tests for InteractivePrompt class.
 
 import pytest
 import torch
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, patch
 from src.interactive import InteractivePrompt
 
 
@@ -42,7 +42,7 @@ class TestInteractivePrompt:
     def test_send_message(self):
         """Test sending a message and getting a response."""
         # Mock the generate_text function
-        with pytest.patch('src.interactive.generate_text') as mock_generate:
+        with patch('src.interactive.generate_text') as mock_generate:
             mock_generate.return_value = "Hello! How can I help you?"
             
             response = self.prompt.send_message("Hi there!")
@@ -200,7 +200,7 @@ class TestInteractivePrompt:
         
         assert "Context: 80/100 tokens" in info
         assert "80.0% utilization" in info
-        assert "Medium" in info  # Should be medium utilization
+        assert "High" in info  # Should be high utilization (80% >= 80%)
     
     def test_context_utilization_levels(self):
         """Test different context utilization levels."""

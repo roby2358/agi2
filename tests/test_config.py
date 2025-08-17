@@ -41,7 +41,9 @@ class TestGPT2Config:
             n_layer=6,
             n_head=8,
             n_inner=2048,
-            dropout=0.2
+            resid_pdrop=0.2,
+            embd_pdrop=0.2,
+            attn_pdrop=0.2
         )
         
         assert config.vocab_size == 1000

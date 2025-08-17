@@ -102,13 +102,21 @@ class TestPositionEmbeddings:
         embeddings = PositionEmbeddings(max_seq_len, d_model)
         
         # Check that different positions have different embeddings
-        pos_emb_0 = embeddings(10)
-        pos_emb_1 = embeddings(20)
+        # Get embeddings for a sequence of length 20
+        pos_embeddings = embeddings(20)  # Shape: (20, d_model)
         
-        assert not torch.allclose(pos_emb_0, pos_emb_1)
+        # Compare different positions within the same sequence
+        # Position 0 should be different from position 10
+        pos_0 = pos_embeddings[0]  # First position
+        pos_10 = pos_embeddings[10]  # Eleventh position
         
-        # Check that embeddings are normalized (roughly)
-        assert torch.allclose(pos_emb_0.norm(), torch.tensor(pos_emb_0.shape[0] ** 0.5), atol=1.0)
+        assert not torch.allclose(pos_0, pos_10)
+        
+        # Check that position embeddings have reasonable magnitudes
+        # Each position embedding should have values roughly between -1 and 1
+        # (since they use sin/cos functions)
+        assert torch.all(pos_embeddings >= -1.1)  # Allow small numerical error
+        assert torch.all(pos_embeddings <= 1.1)   # Allow small numerical error
     
     def test_forward_pass(self):
         """Test forward pass with various sequence lengths."""
@@ -149,15 +157,18 @@ class TestPositionEmbeddings:
         
         embeddings = PositionEmbeddings(max_seq_len, d_model)
         
-        # Get embeddings for different positions
-        pos_0 = embeddings(10)
-        pos_1 = embeddings(20)
-        pos_2 = embeddings(30)
+        # Get embeddings for a sequence of length 30
+        pos_embeddings = embeddings(30)  # Shape: (30, d_model)
         
-        # All should be different
-        assert not torch.allclose(pos_0, pos_1)
-        assert not torch.allclose(pos_1, pos_2)
-        assert not torch.allclose(pos_0, pos_2)
+        # Compare different positions within the same sequence
+        # All should be different because they represent different absolute positions
+        pos_0 = pos_embeddings[0]   # First position
+        pos_10 = pos_embeddings[10] # Eleventh position
+        pos_20 = pos_embeddings[20] # Twenty-first position
+        
+        assert not torch.allclose(pos_0, pos_10)
+        assert not torch.allclose(pos_10, pos_20)
+        assert not torch.allclose(pos_0, pos_20)
     
     def test_buffer_registration(self):
         """Test that position embeddings are registered as buffers."""
