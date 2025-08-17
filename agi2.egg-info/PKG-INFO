@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: agi2
 Version: 0.1.0
 Summary: A Python project for training GPT-2 models
@@ -43,7 +43,6 @@ Requires-Dist: jupyter>=1.0.0; extra == "dev"
 Requires-Dist: notebook>=6.5.0; extra == "dev"
 Requires-Dist: ipykernel>=6.0.0; extra == "dev"
 Requires-Dist: ipywidgets>=8.0.0; extra == "dev"
-Dynamic: license-file
 
 # AGI2 - Working GPT-2 Model
 
