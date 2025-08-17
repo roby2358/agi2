@@ -78,12 +78,43 @@ def main():
     print("-" * 50)
     
     try:
-        # Load the trained model
-        model = torch.load(str(model_path), map_location=device)
-        model.eval()
+        # Load the trained model checkpoint
+        checkpoint = torch.load(str(model_path), map_location=device)
         
-        # Initialize tokenizer
-        tokenizer = BasicTokenizer()
+        # Check if it's a checkpoint dictionary or direct model
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            # It's a checkpoint dictionary
+            print("Loading from checkpoint dictionary...")
+            
+            # Extract config and create model
+            if 'config' in checkpoint:
+                config = checkpoint['config']
+                print(f"Model config: {config}")
+            else:
+                # Fallback to default config if not saved
+                print("No config found in checkpoint, using default GPT-2 Small config")
+                config = GPT2Config()
+            
+            # Create new model instance
+            model = GPT2Model(config)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            
+            # Load tokenizer if available
+            if 'tokenizer' in checkpoint:
+                tokenizer = checkpoint['tokenizer']
+                print("Using tokenizer from checkpoint")
+            else:
+                tokenizer = BasicTokenizer()
+                print("Using default tokenizer")
+                
+        else:
+            # Assume it's a direct model (for backward compatibility)
+            print("Loading direct model...")
+            model = checkpoint
+            tokenizer = BasicTokenizer()
+        
+        model = model.to(device)
+        model.eval()
         
         # Generate text
         generated_text = generate_text(
@@ -99,6 +130,8 @@ def main():
         
     except Exception as e:
         print(f"Generation failed with error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
