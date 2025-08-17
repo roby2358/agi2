@@ -1,0 +1,11 @@
+Score:   20
+ID: context-viz-du28
+Add context window visualization/debugging to InteractivePrompt for better conversation flow understanding
+---
+Score:   20
+ID: conv-export-xdbj
+Add conversation export/import functionality to InteractivePrompt for saving and loading conversation history
+---
+Score:   20
+ID: context-mgmt-kitf
+Add configurable context management strategies to InteractivePrompt for flexible conversation handling
