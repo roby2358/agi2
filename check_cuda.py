@@ -6,7 +6,6 @@ This utility checks whether CUDA is available on your system and provides
 detailed information about GPU support for PyTorch.
 """
 
-import sys
 import platform
 import subprocess
 from pathlib import Path
