@@ -47,12 +47,12 @@ cd agi2
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 3. For development dependencies:
 ```bash
-pip install -e ".[dev]"
+uv sync --extra=dev
 ```
 
 ## Data Preparation
@@ -243,21 +243,21 @@ Run the test suite to ensure everything works correctly:
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=src
+uv run pytest --cov=src
 
 # Run specific test categories
-pytest -m unit      # Unit tests only
-pytest -m integration  # Integration tests only
+uv run pytest -m unit      # Unit tests only
+uv run pytest -m integration  # Integration tests only
 ```
 
 ## Performance Optimization
 
 ### GPU Acceleration
 
-- Install CUDA-enabled PyTorch for GPU training
+- The project automatically installs CUDA-enabled PyTorch via `uv sync`
 - Use `device="cuda"` in training functions
 - Monitor GPU memory usage and adjust batch_size accordingly
 
@@ -276,6 +276,16 @@ pytest -m integration  # Integration tests only
 3. **Poor Generation**: Increase training epochs, check data quality
 4. **Tokenization Errors**: Ensure corpus is properly formatted
 
+### Environment Issues
+
+If you encounter dependency problems:
+
+```bash
+# Clean reinstall with uv
+uv venv --reinstall
+uv sync --extra=dev
+```
+
 ### Debug Mode
 
 Enable verbose logging during training:
@@ -292,8 +302,26 @@ training_history = train_model(
 1. Fork the repository
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure all tests pass
+4. Ensure all tests pass with `uv run pytest`
 5. Submit a pull request
+
+### Development Setup
+
+```bash
+# Clone and setup
+git clone <your-fork-url>
+cd agi2
+
+# Install with development dependencies
+uv sync --extra=dev
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run black src/ tests/
+uv run isort src/ tests/
+```
 
 ## License
 
