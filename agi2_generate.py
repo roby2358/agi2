@@ -75,7 +75,7 @@ def main():
     
     try:
         # Load the trained model checkpoint
-        checkpoint = torch.load(str(model_path), map_location=device)
+        checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
         
         # Check if it's a checkpoint dictionary or direct model
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
