@@ -1,52 +1,108 @@
-Priority:  100
-Status: Done
-ID: readme-a7dk
-Refactor README to focus on single GPT-2 model implementation instead of broad framework
----
-Priority:  100
-Status: ToDo
-ID: skeleton-emq9
-Write skeleton for runtime project - create directory structure, empty files, and basic imports for all components
----
-Priority:   85
-Status: ToDo
-ID: config-yurt
-Implement GPT2Config class for model configuration management
----
 Priority:   80
 Status: ToDo
-ID: interactive-q9kj
-Implement InteractivePrompt class for interactive conversation management with context window building
+ID: corpus-f8d8
+build a synthetic training set in corpus.txt
 ---
 Priority:   75
 Status: ToDo
-ID: model-aaaa
-Implement GPT2Model class with configurable architecture and forward pass
+ID: corpus01-fzfq
+Build corpus01.txt: Formal Logic & Mathematical Reasoning content
 ---
-Priority:   72
+Priority:   75
 Status: ToDo
-ID: transformer-dgts
-Implement TransformerBlock class combining attention and feed-forward layers
+ID: corpus02-az57
+Build corpus02.txt: Critical Thinking & Fallacy Detection content
 ---
-Priority:   70
+Priority:   75
 Status: ToDo
-ID: embeddings-hvqe
-Implement TokenEmbeddings and PositionEmbeddings classes with proper initialization and forward methods
+ID: corpus03-hv8d
+Build corpus03.txt: Problem Decomposition & Pattern Recognition content
 ---
-Priority:   65
+Priority:   75
 Status: ToDo
-ID: attention-d5cv
-Implement MultiHeadAttention class with scaled dot-product attention and causal masking
+ID: corpus04-kjk5
+Build corpus04.txt: Physics & Physical Sciences content
 ---
-Priority:   65
+Priority:   75
 Status: ToDo
-ID: ui-ugvz
-Implement interactive prompted UI for text generation with real-time input/output
+ID: corpus05-a3p9
+Build corpus05.txt: Chemistry & Materials Science content
 ---
-Priority:   60
+Priority:   75
 Status: ToDo
-ID: ffn-mw74
-Implement FeedForward class with GELU activation, dropout, and proper dimensions
+ID: corpus06-vbvr
+Build corpus06.txt: Biology & Life Sciences content
+---
+Priority:   75
+Status: ToDo
+ID: corpus07-4wmx
+Build corpus07.txt: Earth & Space Sciences content
+---
+Priority:   75
+Status: ToDo
+ID: corpus08-3uvj
+Build corpus08.txt: Creative Writing & Storytelling content
+---
+Priority:   75
+Status: ToDo
+ID: corpus09-eb3h
+Build corpus09.txt: Humor & Wit content
+---
+Priority:   75
+Status: ToDo
+ID: corpus10-deqv
+Build corpus10.txt: Programming & Computer Science content
+---
+Priority:   75
+Status: ToDo
+ID: corpus11-vixv
+Build corpus11.txt: Mathematics & Engineering content
+---
+Priority:   75
+Status: ToDo
+ID: corpus12-nmxj
+Build corpus12.txt: System Design & Architecture content
+---
+Priority:   75
+Status: ToDo
+ID: corpus13-qxsv
+Build corpus13.txt: Cognitive Psychology & Decision Making content
+---
+Priority:   75
+Status: ToDo
+ID: corpus14-ufr8
+Build corpus14.txt: Social Psychology & Human Dynamics content
+---
+Priority:   75
+Status: ToDo
+ID: corpus15-i2hp
+Build corpus15.txt: Rhetoric & Persuasion content
+---
+Priority:   75
+Status: ToDo
+ID: corpus16-s64p
+Build corpus16.txt: Language & Linguistics content
+---
+Priority:   75
+Status: ToDo
+ID: corpus17-mfcd
+Build corpus17.txt: Ethics & Moral Philosophy content
+---
+Priority:   75
+Status: ToDo
+ID: corpus18-p69u
+Build corpus18.txt: Philosophy & Existential Questions content
+---
+Priority:   75
+Status: ToDo
+ID: corpus19-twvr
+Build corpus19.txt: Reasoning Exercise Drills content
+---
+Priority:   75
+Status: ToDo
+ID: corpus20-hsh8
+Build corpus20.txt: Rhetorical Melee Drills content
+A free-flowing, dynamic exchange of arguments and counter-arguments
 ---
 Priority:   60
 Status: ToDo
@@ -63,45 +119,100 @@ Status: ToDo
 ID: bpe-ys58
 Implement byte-pair encoding tokenizer for text processing
 ---
-Priority:   55
-Status: ToDo
-ID: serialize-hnyf
-Implement model serialization (save/load) with configuration preservation
----
 Priority:   50
 Status: ToDo
-ID: train-aaab
-Create simple training function that takes text and epochs
----
-Priority:   48
-Status: ToDo
-ID: loss-opt-cf66
-Implement loss function (cross-entropy) and optimizer setup for training
----
-Priority:   45
-Status: ToDo
-ID: data-nkyd
-Create data loading pipeline: read text file, tokenize, create training batches
+ID: ngram-tok-pei4
+Implement an n-gram encoding tokenizer
 ---
 Priority:   40
 Status: ToDo
-ID: training-zyhg
-Implement training loop: forward pass, loss calculation, backpropagation
+ID: ui-ugvz
+Implement interactive prompted UI for text generation with real-time input/output
 ---
-Priority:   35
-Status: ToDo
-ID: generate-h7a3
-Add text generation function with temperature and max_length parameters
+Priority:    0
+Status: Done
+ID: skeleton-emq9
+Write skeleton for runtime project - create directory structure, empty files, and basic imports for all components
 ---
-Priority:   30
-Status: ToDo
+Priority:    0
+Status: Done
+ID: interactive-q9kj
+Implement InteractivePrompt class for interactive conversation management with context window building
+---
+Priority:    0
+Status: Done
+ID: serialize-hnyf
+Implement model serialization (save/load) with configuration preservation
+---
+Priority:    0
+Status: Done
 ID: main-7dye
 Create main training script that takes corpus file path as command line argument
 ---
-Priority:   25
-Status: ToDo
+Priority:    0
+Status: Done
+ID: generate-h7a3
+Add text generation function with temperature and max_length parameters
+---
+Priority:    0
+Status: Done
+ID: training-zyhg
+Implement training loop: forward pass, loss calculation, backpropagation
+---
+Priority:    0
+Status: Done
+ID: data-nkyd
+Create data loading pipeline: read text file, tokenize, create training batches
+---
+Priority:    0
+Status: Done
+ID: loss-opt-cf66
+Implement loss function (cross-entropy) and optimizer setup for training
+---
+Priority:    0
+Status: Done
+ID: train-aaab
+Create simple training function that takes text and epochs
+---
+Priority:    0
+Status: Done
 ID: tokenizer-aaac
 Implement basic text tokenization
+---
+Priority:    0
+Status: Done
+ID: ffn-mw74
+Implement FeedForward class with GELU activation, dropout, and proper dimensions
+---
+Priority:    0
+Status: Done
+ID: attention-d5cv
+Implement MultiHeadAttention class with scaled dot-product attention and causal masking
+---
+Priority:    0
+Status: Done
+ID: embeddings-hvqe
+Implement TokenEmbeddings and PositionEmbeddings classes with proper initialization and forward methods
+---
+Priority:    0
+Status: Done
+ID: transformer-dgts
+Implement TransformerBlock class combining attention and feed-forward layers
+---
+Priority:    0
+Status: Done
+ID: model-aaaa
+Implement AGI2Model class with configurable architecture and forward pass
+---
+Priority:    0
+Status: Done
+ID: config-yurt
+Implement AGI2Config class for model configuration management
+---
+Priority:    0
+Status: Done
+ID: readme-a7dk
+Refactor README to focus on single AGI-2 model implementation instead of broad framework
 ---
 Priority:    0
 Status: Done
