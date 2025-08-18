@@ -1,0 +1,32 @@
+# Moby Dick Training Configuration
+# Usage: python agi2_train.py resources/moby_dick.toml
+
+# Corpus and model paths
+corpus_path = "samples/moby_dick.txt"
+model_name = "moby_dick"
+model_path = "trained/moby_dick.pt"
+
+# Training parameters
+epochs = 10
+batch_size = 12
+learning_rate = 3e-4
+seq_len = 1024
+
+# Model architecture (optional, uses defaults if not specified)
+model_positions = 1024
+model_embd = 768
+model_layer = 12
+model_head = 12
+
+# Device and resume options
+device = "auto"
+# resume = ""  # Path to checkpoint file to resume from (leave empty to start fresh)
+
+# Generation parameters (for generate scripts)
+max_length = 300
+temperature = 0.8
+beam_size = 5
+model_seed = "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world."
+
+# Interactive parameters
+max_context_length = 1024

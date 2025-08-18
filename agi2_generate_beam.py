@@ -3,14 +3,14 @@
 AGI2 Beam Search Text Generation Script
 
 Usage:
-    python agi2_generate_beam.py <prompt>
+    python agi2_generate_beam.py <config_file> [prompt]
 
 Example:
-    python agi2_generate_beam.py "The future of AI is"
+    python agi2_generate_beam.py resources/moby_dick.toml "The future of AI is"
+    python agi2_generate_beam.py resources/default.toml "Call me Ishmael"
 """
 
 import sys
-import argparse
 import torch
 from pathlib import Path
 
@@ -19,62 +19,55 @@ from src.tokenizer import BasicTokenizer
 from src.generation import generate_with_beam_search
 from src.config import GPT2Config
 from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config_loader import get_generation_config, get_config_value
 
 
 def main():
+    if len(sys.argv) < 2:
+        print("Usage: python agi2_generate_beam.py <config_file> [prompt]")
+        print("Example: python agi2_generate_beam.py resources/moby_dick.toml \"The future of AI is\"")
+        sys.exit(1)
+    
+    config_path = sys.argv[1]
+    prompt = sys.argv[2] if len(sys.argv) > 2 else "The future of AI is"
+    
+    try:
+        # Load configuration from TOML file
+        config = get_generation_config(config_path)
+        print(f"Loaded configuration from: {config_path}")
+        
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        sys.exit(1)
+    
     # Check CUDA availability at startup
     print("Checking CUDA availability for beam search generation...")
     cuda_status = check_cuda_availability(verbose=True)
     
-    parser = argparse.ArgumentParser(description="Generate text using beam search with a trained AGI2 model")
-    parser.add_argument(
-        "prompt", 
-        type=str, 
-        help="Text prompt to start generation"
-    )
-    parser.add_argument(
-        "--model-path", 
-        type=str, 
-                default="trained/model.pt",
-        help="Path to the trained model file (default: trained/model.pt)"
-    )
-    parser.add_argument(
-        "--max-length", 
-        type=int, 
-        default=50, 
-        help="Maximum length of generated text (default: 50)"
-    )
-    parser.add_argument(
-        "--beam-size", 
-        type=int, 
-        default=5, 
-        help="Beam size for search (default: 5)"
-    )
-    parser.add_argument(
-        "--device", 
-        type=str, 
-        choices=["cpu", "cuda", "auto"], 
-        default="auto", 
-        help="Device to use for generation (default: auto)"
-    )
-    
-    args = parser.parse_args()
+    # Extract configuration values with defaults
+    model_path = Path(get_config_value(config, 'model_path'))
+    max_length = get_config_value(config, 'max_length', 50)
+    beam_size = get_config_value(config, 'beam_size', 5)
+    device_choice = get_config_value(config, 'device', 'auto')
+    model_seed = get_config_value(config, 'model_seed', "")
     
     # Validate model path
-    model_path = Path(args.model_path)
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
         print("Please train a model first using agi2_train.py")
         sys.exit(1)
     
     # Determine device using our utility
-    device = get_optimal_device(args.device)
+    device = get_optimal_device(device_choice)
     
     print(f"Using device: {device}")
     print(f"Loading model from: {model_path}")
-    print(f"Prompt: '{args.prompt}'")
-    print(f"Max length: {args.max_length}")
-    print(f"Beam size: {args.beam_size}")
+    print(f"User prompt: '{prompt}'")
+    if model_seed:
+        print(f"Model seed: {len(model_seed)} characters")
+        print(f"Full context: {len(model_seed + prompt)} characters")
+    print(f"Max length: {max_length}")
+    print(f"Beam size: {beam_size}")
     print("-" * 50)
     
     try:
@@ -85,12 +78,15 @@ def main():
         # Initialize tokenizer
         tokenizer = BasicTokenizer()
         
+        # Combine model seed with user prompt
+        full_prompt = model_seed + prompt if model_seed else prompt
+        
         # Generate text using beam search
         generated_text = generate_with_beam_search(
             model=model,
-            prompt=args.prompt,
-            max_length=args.max_length,
-            beam_size=args.beam_size,
+            prompt=full_prompt,
+            max_length=max_length,
+            beam_size=beam_size,
             tokenizer=tokenizer
         )
         

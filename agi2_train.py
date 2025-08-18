@@ -3,16 +3,14 @@
 AGI2 Training Script
 
 Usage:
-    python agi2_train.py <corpus_path>
+    python agi2_train.py <config_file>
 
 Example:
-    python agi2_train.py data/corpus.txt
-    python agi2_train.py data/corpus.txt --resume trained/model.pt_epoch_10.pt
-    python agi2_train.py data/corpus.txt --model-name my_model
+    python agi2_train.py resources/moby_dick.toml
+    python agi2_train.py resources/default.toml
 """
 
 import sys
-import argparse
 import torch
 from pathlib import Path
 
@@ -22,9 +20,26 @@ from src.training import train_model
 from src.config import GPT2Config
 from src.utils import load_checkpoint
 from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config_loader import get_training_config, get_config_value
 
 
 def main():
+    if len(sys.argv) != 2:
+        print("Usage: python agi2_train.py <config_file>")
+        print("Example: python agi2_train.py resources/moby_dick.toml")
+        sys.exit(1)
+    
+    config_path = sys.argv[1]
+    
+    try:
+        # Load configuration from TOML file
+        config = get_training_config(config_path)
+        print(f"Loaded configuration from: {config_path}")
+        
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        sys.exit(1)
+    
     # Check CUDA availability at startup
     print("Checking CUDA availability for training...")
     cuda_status = check_cuda_availability(verbose=True)
@@ -35,76 +50,45 @@ def main():
     print("  watch -n 1 nvidia-smi  # Updates every 1 second (Linux/Mac)")
     print("  # On Windows, use Task Manager > Performance > GPU\n")
     
-    parser = argparse.ArgumentParser(description="Train AGI2 model on a corpus")
-    parser.add_argument(
-        "corpus_path", 
-        type=str, 
-        help="Path to the training corpus file"
-    )
-    parser.add_argument(
-        "--epochs", 
-        type=int, 
-        default=10, 
-        help="Number of training epochs (default: 10)"
-    )
-    parser.add_argument(
-        "--batch-size", 
-        type=int, 
-        default=12, 
-        help="Training batch size (default: 12)"
-    )
-    parser.add_argument(
-        "--learning-rate", 
-        type=float, 
-        default=3e-4, 
-        help="Learning rate (default: 3e-4)"
-    )
-    parser.add_argument(
-        "--seq-len", 
-        type=int, 
-        default=1024, 
-        help="Sequence length (default: 1024)"
-    )
-    parser.add_argument(
-        "--model-name", 
-        type=str, 
-        default="model", 
-        help="Name for the model (default: model) - files will be saved to trained/{model-name}.pt and trained/{model-name}.pt_epoch_N.pt"
-    )
-    parser.add_argument(
-        "--resume", 
-        type=str, 
-        help="Path to checkpoint file to resume training from"
-    )
-    parser.add_argument(
-        "--device", 
-        type=str, 
-        choices=["cpu", "cuda", "auto"], 
-        default="auto", 
-        help="Device to use for training (default: auto)"
-    )
+    # Extract configuration values with defaults
+    corpus_path = Path(get_config_value(config, 'corpus_path'))
+    epochs = get_config_value(config, 'epochs', 10)
+    batch_size = get_config_value(config, 'batch_size', 12)
+    learning_rate = get_config_value(config, 'learning_rate', 3e-4)
+    seq_len = get_config_value(config, 'seq_len', 1024)
+    model_name = get_config_value(config, 'model_name', 'model')
+    resume_path = get_config_value(config, 'resume')
+    device_choice = get_config_value(config, 'device', 'auto')
     
-    args = parser.parse_args()
+    # Model architecture parameters (optional)
+    model_positions = get_config_value(config, 'model_positions', 1024)
+    model_embd = get_config_value(config, 'model_embd', 768)
+    model_layer = get_config_value(config, 'model_layer', 12)
+    model_head = get_config_value(config, 'model_head', 12)
     
     # Validate corpus path
-    corpus_path = Path(args.corpus_path)
     if not corpus_path.exists():
         print(f"Error: Corpus file not found: {corpus_path}")
         sys.exit(1)
     
     # Validate resume checkpoint if provided
-    if args.resume:
-        resume_path = Path(args.resume)
+    if resume_path:
+        resume_path = Path(resume_path)
         if not resume_path.exists():
             print(f"Error: Resume checkpoint not found: {resume_path}")
             sys.exit(1)
         print(f"Resuming training from checkpoint: {resume_path}")
     
     # Determine device using our utility
-    device = get_optimal_device(args.device)
+    device = get_optimal_device(device_choice)
     
     print(f"Using device: {device}")
     print(f"Training on corpus: {corpus_path}")
+    print(f"Model name: {model_name}")
+    print(f"Epochs: {epochs}")
+    print(f"Batch size: {batch_size}")
+    print(f"Learning rate: {learning_rate}")
+    print(f"Sequence length: {seq_len}")
     
     # Initialize tokenizer and build vocabulary first
     tokenizer = BasicTokenizer()
@@ -120,23 +104,23 @@ def main():
     print(f"Vocabulary built with {actual_vocab_size} tokens")
     
     # Initialize model with correct vocabulary size
-    config = GPT2Config(
+    model_config = GPT2Config(
         vocab_size=actual_vocab_size,  # Use actual vocab size from tokenizer
-        n_positions=1024,
-        n_embd=768,
-        n_layer=12,
-        n_head=12
+        n_positions=model_positions,
+        n_embd=model_embd,
+        n_layer=model_layer,
+        n_head=model_head
     )
     
-    model = GPT2Model(config)
+    model = GPT2Model(model_config)
     
     print(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters")
     
     # Resume from checkpoint if specified
     start_epoch = 0
-    if args.resume:
-        print(f"Loading checkpoint from {args.resume}...")
-        checkpoint = torch.load(args.resume, map_location=device)
+    if resume_path:
+        print(f"Loading checkpoint from {resume_path}...")
+        checkpoint = torch.load(resume_path, map_location=device)
         
         # Load model state
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -157,17 +141,17 @@ def main():
             model=model,
             tokenizer=tokenizer,  # Pass the fitted tokenizer
             corpus_path=str(corpus_path),
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            seq_len=args.seq_len,
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            seq_len=seq_len,
             device=device,
-            save_path=args.model_name,
+            save_path=model_name,
             start_epoch=start_epoch  # Pass starting epoch
         )
         
         print(f"Training completed successfully!")
-        print(f"Model saved to: trained/{args.model_name}.pt")
+        print(f"Model saved to: trained/{model_name}.pt")
         
     except Exception as e:
         print(f"Training failed with error: {e}")

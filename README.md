@@ -2,6 +2,40 @@
 
 A complete implementation of GPT-2 for training custom language models from text data. This project provides a full pipeline from data preparation to interactive text generation.
 
+### Development Setup
+
+```bash
+# Clone and setup
+git clone <your-fork-url>
+cd agi2
+
+# Install with development dependencies
+uv sync --extra=dev
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run black src/ tests/
+uv run isort src/ tests/
+```
+
+## Testing
+
+Run the test suite to ensure everything works correctly:
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=src
+
+# Run specific test categories
+uv run pytest -m unit      # Unit tests only
+uv run pytest -m integration  # Integration tests only
+```
+
 ## Features
 
 - **Complete GPT-2 Architecture**: Full transformer implementation with attention mechanisms
@@ -13,28 +47,64 @@ A complete implementation of GPT-2 for training custom language models from text
 
 ## Quick Start
 
-### Command Line Training
+### Configuration-Based Usage
+
+All AGI2 scripts use TOML configuration files instead of command line arguments. This makes it easier to manage different training configurations and ensures reproducibility.
 
 ```bash
-# Basic training
-python agi2_train.py corpus.txt
+# Training with configuration file
+python agi2_train.py resources/moby_dick.toml
 
-# Training with custom parameters
-python agi2_train.py corpus.txt --epochs 20 --batch-size 8 --learning-rate 1e-4
+# Text generation with configuration file
+python agi2_generate.py resources/moby_dick.toml " Over the starboard we saw "
 
-# Resume training from checkpoint
-python agi2_train.py corpus.txt --resume trained/model.pt_epoch_10.pt --epochs 5
+# Interactive chat with configuration file
+python agi2_interactive.py resources/moby_dick.toml
+
+# Beam search generation with configuration file
+python agi2_generate_beam.py resources/moby_dick.toml "The future of AI is"
 ```
 
-### Available Options
+### Configuration Files
 
-- `--epochs`: Number of training epochs (default: 10)
-- `--batch-size`: Training batch size (default: 4)
-- `--learning-rate`: Learning rate (default: 3e-4)
-- `--seq-len`: Sequence length (default: 1024)
-- `--model-name`: Model name for saving (default: model) - files will be saved to trained/{model-name}.pt
-- `--resume`: Resume from checkpoint file
-- `--device`: Training device: cpu, cuda, or auto (default: auto)
+Configuration files are stored in the `resources/` directory. Each file specifies all parameters for a specific use case:
+
+- `resources/default.toml` - Default configuration with all parameters
+- `resources/moby_dick.toml` - Example configuration for Moby Dick training
+- Create your own `.toml` files for different projects
+
+### All Available Parameters
+
+The following parameters can be configured in your TOML files:
+
+#### Training Parameters (agi2_train.py)
+- `corpus_path` - Path to the training corpus file (required)
+- `model_name` - Name for the model (required)
+- `epochs` - Number of training epochs (default: 10)
+- `batch_size` - Training batch size (default: 12)
+- `learning_rate` - Learning rate (default: 3e-4)
+- `seq_len` - Sequence length (default: 1024)
+- `resume` - Path to checkpoint file to resume from (optional)
+- `device` - Device to use: "cpu", "cuda", or "auto" (default: "auto")
+
+#### Model Architecture Parameters (optional)
+- `model_positions` - Maximum sequence length (default: 1024)
+- `model_embd` - Embedding dimension (default: 768)
+- `model_layer` - Number of transformer layers (default: 12)
+- `model_head` - Number of attention heads (default: 12)
+
+#### Generation Parameters (agi2_generate.py, agi2_generate_beam.py)
+- `model_path` - Path to the trained model file (required)
+- `max_length` - Maximum length of generated text (default: 100 for generate, 50 for beam)
+- `temperature` - Sampling temperature for generation (default: 0.8)
+- `beam_size` - Beam size for beam search (default: 5)
+- `model_seed` - Multi-line text prepended to user prompts (optional)
+- `device` - Device to use: "cpu", "cuda", or "auto" (default: "auto")
+
+#### Interactive Parameters (agi2_interactive.py)
+- `model_path` - Path to the trained model file (required)
+- `max_context_length` - Maximum context length for chat (default: 1024)
+- `device` - Device to use: "cpu", "cuda", or "auto" (default: "auto")
 
 ## Project Structure
 
@@ -51,7 +121,55 @@ src/
 ├── generation.py    # Text generation algorithms
 ├── interactive.py   # Interactive conversation system
 ├── config.py        # Model configuration
+├── config_loader.py # TOML configuration loader
 └── utils.py         # Utility functions
+```
+
+## Configuration Management
+
+### Creating Custom Configuration Files
+
+You can create custom configuration files for different projects or experiments. Simply copy one of the existing files and modify the parameters:
+
+```bash
+# Copy the default configuration
+cp resources/default.toml resources/my_experiment.toml
+
+# Edit the configuration file
+# Then use it with any script
+python agi2_train.py resources/my_experiment.toml
+```
+
+### Configuration File Examples
+
+**For a small model (faster training):**
+```toml
+corpus_path = "data/small_corpus.txt"
+model_name = "small_model"
+epochs = 5
+batch_size = 16
+model_layer = 6
+model_head = 6
+model_embd = 384
+```
+
+**For a large model (better quality):**
+```toml
+corpus_path = "data/large_corpus.txt"
+model_name = "large_model"
+epochs = 20
+batch_size = 8
+model_layer = 24
+model_head = 16
+model_embd = 1024
+```
+
+**For GPU training:**
+```toml
+corpus_path = "data/corpus.txt"
+model_name = "gpu_model"
+device = "cuda"
+batch_size = 32  # Larger batch size for GPU
 ```
 
 ## Installation
@@ -62,23 +180,6 @@ src/
 - PyTorch 2.0.0 or higher
 - CUDA (optional, for GPU acceleration)
 
-### Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd agi2
-```
-
-2. Install dependencies:
-```bash
-uv sync
-```
-
-3. For development dependencies:
-```bash
-uv sync --extra=dev
-```
 
 ## Data Preparation
 
@@ -105,37 +206,11 @@ Include diverse examples of the writing style you want to learn.
 
 ### Basic Training
 
-The training module provides flexible training options. Here's how to train a model:
+The training module provides flexible training options. Here's how to train a model using configuration files:
 
-```python
-from src.model import GPT2Model
-from src.tokenizer import BasicTokenizer
-from src.training import train_model
-from src.config import GPT2Config
-
-# Initialize model and tokenizer
-config = GPT2Config(
-    vocab_size=50000,
-    n_positions=1024,
-    n_embd=768,
-    n_layer=12,
-    n_head=12
-)
-
-model = GPT2Model(config)
-tokenizer = BasicTokenizer()
-
-# Train the model
-training_history = train_model(
-    model=model,
-    corpus_path="path/to/your/corpus.txt",
-    epochs=10,
-    batch_size=4,
-    learning_rate=3e-4,
-    seq_len=1024,
-    device="cuda" if torch.cuda.is_available() else "cpu",
-    save_path="model"
-)
+```bash
+# Train with a configuration file
+python agi2_train.py resources/my_project.toml
 ```
 
 ### Training Parameters
@@ -156,14 +231,21 @@ training_history = train_model(
 
 ### Resuming Training
 
-You can resume training from where you left off using any checkpoint file:
+You can resume training from where you left off by setting the `resume` parameter in your configuration file:
 
+**Configuration file with resume (resources/resume_training.toml):**
+```toml
+corpus_path = "data/my_corpus.txt"
+model_name = "my_project"
+epochs = 5  # Continue for 5 more epochs
+resume = "trained/my_project.pt_epoch_10.pt"  # Resume from checkpoint
+device = "auto"
+```
+
+**Usage:**
 ```bash
-# Resume from a specific checkpoint
-python agi2_train.py corpus.txt --resume trained/model.pt_epoch_10.pt
-
-# Resume and continue for 5 more epochs
-python agi2_train.py corpus.txt --resume trained/model.pt_epoch_15.pt --epochs 5
+# Resume training with configuration file
+python agi2_train.py resources/resume_training.toml
 ```
 
 **What gets resumed:**
@@ -189,124 +271,22 @@ python agi2_train.py corpus.txt --resume trained/model.pt_epoch_15.pt --epochs 5
 
 ### Basic Generation
 
-Generate text from a trained model:
-
-```python
-from src.generation import generate_text
-from src.tokenizer import BasicTokenizer
-
-# Load your trained model
-model = torch.load("trained/model.pt")
-tokenizer = BasicTokenizer()
-
-# Generate text
-generated_text = generate_text(
-    model=model,
-    prompt="Once upon a time",
-    max_length=100,
-    temperature=0.8,
-    tokenizer=tokenizer
-)
-
-print(generated_text)
-```
-
-### Generation Parameters
-
-- **temperature**: Controls randomness (0.1 = very focused, 1.0 = very random)
-- **top_k**: Limits vocabulary to top K most likely tokens
-- **top_p**: Nucleus sampling - keeps tokens with cumulative probability ≤ p
-- **max_length**: Maximum number of tokens to generate
-
-### Advanced Generation
-
-Use beam search for more coherent text:
-
-```python
-from src.generation import generate_with_beam_search
-
-generated_text = generate_with_beam_search(
-    model=model,
-    prompt="The future of AI is",
-    max_length=50,
-    beam_size=5,
-    tokenizer=tokenizer
-)
-```
-
-## Interactive Mode
-
-### Chat Interface
-
-Use the interactive mode for testing your model:
-
-```python
-from src.interactive import InteractivePrompt
-
-# Create interactive session
-chat = InteractivePrompt(
-    model=model,
-    max_context_length=1024,
-    tokenizer=tokenizer
-)
-
-# Start chatting
-response = chat.send_message("Hello, how are you?")
-print(response)
-
-# Continue conversation
-response = chat.send_message("Tell me a story")
-print(response)
-```
-
-### Interactive Features
-
-- **Context Management**: Maintains conversation history
-- **Memory Efficient**: Automatically manages context length
-- **Role-based**: Distinguishes between user and assistant messages
-
-## Model Configuration
-
-### Customizing Model Size
-
-Adjust the model architecture in `src/config.py`:
-
-```python
-from src.config import GPT2Config
-
-# Small model (faster training, less memory)
-small_config = GPT2Config(
-    vocab_size=30000,
-    n_positions=512,
-    n_embd=384,
-    n_layer=6,
-    n_head=6
-)
-
-# Large model (better quality, more memory)
-large_config = GPT2Config(
-    vocab_size=50000,
-    n_positions=1024,
-    n_embd=1024,
-    n_layer=24,
-    n_head=16
-)
-```
-
-## Testing
-
-Run the test suite to ensure everything works correctly:
+Generate text from a trained model using configuration files:
 
 ```bash
-# Run all tests
-uv run pytest
+# Generate text with configuration file
+python agi2_generate.py resources/my_project.toml "Your prompt here"
+```
 
-# Run with coverage
-uv run pytest --cov=src
-
-# Run specific test categories
-uv run pytest -m unit      # Unit tests only
-uv run pytest -m integration  # Integration tests only
+**Configuration file for generation (resources/generate.toml):**
+```toml
+model_path = "trained/my_project.pt"
+max_length = 100
+temperature = 0.8
+model_seed = """
+This is a helpful AI assistant that provides creative and informative responses.
+"""
+device = "auto"
 ```
 
 ## Performance Optimization
@@ -360,24 +340,6 @@ training_history = train_model(
 3. Write tests for new functionality
 4. Ensure all tests pass with `uv run pytest`
 5. Submit a pull request
-
-### Development Setup
-
-```bash
-# Clone and setup
-git clone <your-fork-url>
-cd agi2
-
-# Install with development dependencies
-uv sync --extra=dev
-
-# Run tests
-uv run pytest
-
-# Format code
-uv run black src/ tests/
-uv run isort src/ tests/
-```
 
 ## License
 

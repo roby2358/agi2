@@ -1,0 +1,34 @@
+# Default AGI2 Configuration
+# Usage: python agi2_train.py resources/default.toml
+
+# Corpus and model paths
+corpus_path = "samples/corpus.txt"
+model_name = "model"
+model_path = "trained/model.pt"
+
+# Training parameters
+epochs = 10
+batch_size = 12
+learning_rate = 3e-4
+seq_len = 1024
+
+# Model architecture (optional, uses defaults if not specified)
+model_positions = 1024
+model_embd = 768
+model_layer = 12
+model_head = 12
+
+# Device and resume options
+device = "auto"  # "cpu", "cuda", or "auto"
+resume = null  # Path to checkpoint file to resume from, or null
+
+# Generation parameters (for generate scripts)
+max_length = 100
+temperature = 0.8
+beam_size = 5
+model_seed = """
+The following is a conversation between a helpful AI assistant and a user. The AI is knowledgeable, creative, and always tries to provide useful and engaging responses.
+"""
+
+# Interactive parameters
+max_context_length = 1024

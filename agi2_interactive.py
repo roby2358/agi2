@@ -3,10 +3,11 @@
 AGI2 Interactive Chat Script
 
 Usage:
-    python agi2_interactive.py
+    python agi2_interactive.py <config_file>
 
 Example:
-    python agi2_interactive.py
+    python agi2_interactive.py resources/moby_dick.toml
+    python agi2_interactive.py resources/default.toml
 """
 
 import sys
@@ -18,15 +19,34 @@ from src.tokenizer import BasicTokenizer
 from src.interactive import InteractivePrompt
 from src.config import GPT2Config
 from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config_loader import get_interactive_config, get_config_value
 
 
 def main():
+    if len(sys.argv) != 2:
+        print("Usage: python agi2_interactive.py <config_file>")
+        print("Example: python agi2_interactive.py resources/moby_dick.toml")
+        sys.exit(1)
+    
+    config_path = sys.argv[1]
+    
+    try:
+        # Load configuration from TOML file
+        config = get_interactive_config(config_path)
+        print(f"Loaded configuration from: {config_path}")
+        
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        sys.exit(1)
+    
     # Check CUDA availability at startup
     print("Checking CUDA availability for interactive chat...")
     cuda_status = check_cuda_availability(verbose=True)
     
-    # Default model path
-    model_path = Path("trained/model.pt")
+    # Extract configuration values with defaults
+    model_path = Path(get_config_value(config, 'model_path'))
+    device_choice = get_config_value(config, 'device', 'auto')
+    max_context_length = get_config_value(config, 'max_context_length', 1024)
     
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
@@ -34,7 +54,7 @@ def main():
         sys.exit(1)
     
     # Determine device using our utility
-    device = get_optimal_device("auto")
+    device = get_optimal_device(device_choice)
     print(f"Using device: {device}")
     print(f"Loading model from: {model_path}")
     
@@ -49,7 +69,7 @@ def main():
         # Create interactive session
         chat = InteractivePrompt(
             model=model,
-            max_context_length=1024,
+            max_context_length=max_context_length,
             tokenizer=tokenizer
         )
         
