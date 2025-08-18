@@ -31,7 +31,7 @@ resume = ""
 
 # Generation parameters
 max_length = 300
-temperature = 0.9
+temperature = 0.8
 beam_size = 3
 model_seed = """
 This is a short, creative text generation model. It produces concise and imaginative responses.
