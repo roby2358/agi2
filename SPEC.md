@@ -41,27 +41,7 @@ src/
 └── utils.py                 # Utility functions and helpers
 ```
 
-### Test Structure (`tests/`)
-**MUST:**
-```
-tests/
-├── __init__.py              # Test package initialization
-├── test_config.py           # Tests for config.py
-├── test_config_loader.py    # Tests for config_loader.py
-├── test_embeddings.py       # Tests for embeddings.py
-├── test_attention.py        # Tests for attention.py
-├── test_ffn.py             # Tests for ffn.py
-├── test_transformer.py      # Tests for transformer.py
-├── test_model.py            # Tests for model.py
-├── test_tokenizer.py        # Tests for tokenizer.py
-├── test_dataset.py          # Tests for dataset.py
-├── test_training.py         # Tests for training.py
-├── test_training_resume.py  # Tests for training resumption
-├── test_generation.py       # Tests for generation.py
-├── test_interactive.py      # Tests for interactive.py
-├── test_cuda_utils.py       # Tests for CUDA utilities
-└── test_utils.py            # Tests for utils.py
-```
+The test structure is the same under the test/ directory with test_*.py files.
 
 ### Import Structure
 **MUST:**
