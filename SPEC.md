@@ -24,8 +24,9 @@ This document specifies the requirements for implementing a working GPT-2 model 
 **MUST:**
 ```
 src/
-├── __init__.py              # Package initialization
+├── __init__.py              # Package initialization with clean public API
 ├── config.py                # GPT2Config class and configuration management
+├── config_loader.py         # TOML configuration file loader
 ├── embeddings.py            # TokenEmbeddings and PositionEmbeddings classes
 ├── attention.py             # MultiHeadAttention class
 ├── ffn.py                   # FeedForward class
@@ -34,8 +35,9 @@ src/
 ├── tokenizer.py             # BasicTokenizer and BPETokenizer classes
 ├── dataset.py               # TextDataset class
 ├── training.py              # Training functions and training loop
-├── generation.py            # Text generation functions
-├── interactive.py            # InteractivePrompt class for conversation management
+├── generation.py            # Text generation functions (sampling + beam search)
+├── interactive.py           # InteractivePrompt class for conversation management
+├── cuda_utils.py            # CUDA availability checking and device management
 └── utils.py                 # Utility functions and helpers
 ```
 
@@ -45,6 +47,7 @@ src/
 tests/
 ├── __init__.py              # Test package initialization
 ├── test_config.py           # Tests for config.py
+├── test_config_loader.py    # Tests for config_loader.py
 ├── test_embeddings.py       # Tests for embeddings.py
 ├── test_attention.py        # Tests for attention.py
 ├── test_ffn.py             # Tests for ffn.py
@@ -53,8 +56,10 @@ tests/
 ├── test_tokenizer.py        # Tests for tokenizer.py
 ├── test_dataset.py          # Tests for dataset.py
 ├── test_training.py         # Tests for training.py
+├── test_training_resume.py  # Tests for training resumption
 ├── test_generation.py       # Tests for generation.py
 ├── test_interactive.py      # Tests for interactive.py
+├── test_cuda_utils.py       # Tests for CUDA utilities
 └── test_utils.py            # Tests for utils.py
 ```
 
@@ -72,20 +77,30 @@ tests/
 ### Configuration Files
 **MUST:**
 - Include `pyproject.toml` for project configuration
-- Specify Python version requirements (3.12+)
+- Specify Python version requirements (3.11+)
 - Define project dependencies and development tools
 - Use uv for environment management
-- Include `requirements.txt` for easy dependency installation
+- Include TOML configuration files in `resources/` directory
 - Add `.gitignore` for version control
 - Include basic documentation files
+
+**Configuration Files Structure:**
+```
+resources/
+├── default.toml             # Default configuration with all parameters
+├── moby_dick.toml          # Example configuration for Moby Dick training
+├── small_model.toml         # Configuration for faster training with smaller model
+└── large_model.toml         # Configuration for higher quality with larger model
+```
 
 ## Architecture Requirements
 
 ### Model Configuration
 - **MUST**: Support configurable model size (n_layers, n_heads, d_model, d_ff)
 - **MUST**: Default to GPT-2 Small configuration (12 layers, 12 heads, 768 dimensions)
-- **SHOULD**: Refresh configuration changes at application start
-- **MAY**: Support multiple preset configurations (Small, Medium, Large)
+- **MUST**: Support preset configurations (Small, Medium, Large)
+- **SHOULD**: Support custom configuration through TOML files
+- **MAY**: Support dynamic configuration changes at runtime
 
 ### Sequence Length
 - **MUST**: Support configurable sequence length
@@ -204,10 +219,12 @@ tests/
 - Support `encode(text: str) -> List[int]` method
 - Support `decode(tokens: List[int]) -> str` method
 - Handle basic text preprocessing (lowercase, whitespace)
+- Build vocabulary from training corpus
 
 **SHOULD:**
 - Support custom vocabulary
 - Handle special tokens
+- Support vocabulary persistence
 
 **Testing Requirements:**
 - Test encode/decode roundtrip
@@ -249,10 +266,11 @@ tests/
 
 ### 10. Training Loop (training-zyhg)
 **MUST:**
-- Implement `train_epoch(model, dataloader, optimizer, criterion)` function
+- Implement `train_epoch(model, dataloader, optimizer, criterion, device, clip_grad_norm)` function
 - Support forward pass, loss calculation, and backpropagation
 - Return training loss for the epoch
 - Handle gradient clipping
+- Support GPU memory monitoring
 
 **SHOULD:**
 - Support learning rate scheduling
@@ -266,10 +284,11 @@ tests/
 
 ### 11. Training Function (train-aaab)
 **MUST:**
-- Implement `train_model(model, corpus_path: str, epochs: int, **kwargs)` function
+- Implement `train_model(model, tokenizer, corpus_path, epochs, **kwargs)` function
 - Handle model training from start to finish
 - Save checkpoints periodically
 - Return training history
+- Support training resumption from checkpoints
 
 **SHOULD:**
 - Support validation during training
@@ -283,13 +302,14 @@ tests/
 
 ### 12. Text Generation (generate-h7a3)
 **MUST:**
-- Implement `generate_text(model, prompt: str, max_length: int, temperature: float = 1.0)` function
+- Implement `generate_text(model, prompt, max_length, temperature, top_k, top_p, tokenizer, device)` function
 - Support autoregressive text generation
 - Return generated text as string
 - Handle generation stopping conditions
+- Support top-k and top-p sampling
 
 **SHOULD:**
-- Support top-k and top-p sampling
+- Support beam search generation
 - Implement repetition penalty
 - Support custom stopping criteria
 
@@ -300,7 +320,7 @@ tests/
 
 ### 13. Interactive Prompt System (interactive-prompt)
 **MUST:**
-- Implement `InteractivePrompt(model, max_context_length: int = 1024)` class
+- Implement `InteractivePrompt(model, max_context_length, tokenizer)` class
 - Support `send_message(text: str) -> str` method for user input
 - Maintain conversation context in memory up to max_context_length
 - Build context window progressively as conversation continues
@@ -313,22 +333,37 @@ tests/
 - Test context length limits and truncation
 - Test context clearing and reset functionality
 
-### 14. Main Training Script (main-7dye)
+### 14. Configuration Management (config-loader)
 **MUST:**
-- Accept corpus file path as command line argument
-- Initialize model with default configuration
-- Train model for specified epochs
-- Save trained model
+- Implement TOML configuration file loading
+- Support validation of required configuration parameters
+- Provide default values for optional parameters
+- Support different configuration types (training, generation, interactive)
 
 **SHOULD:**
-- Support configuration file input
-- Implement progress logging
-- Support training interruption
+- Support configuration file validation
+- Provide helpful error messages for missing parameters
 
 **Testing Requirements:**
-- Test command line argument parsing
-- Test complete training workflow
-- Test model saving
+- Test configuration file loading
+- Test parameter validation
+- Test default value handling
+
+### 15. CUDA Utilities (cuda-utils)
+**MUST:**
+- Implement CUDA availability checking
+- Support automatic device selection
+- Provide GPU memory monitoring capabilities
+- Handle device fallback gracefully
+
+**SHOULD:**
+- Support device preference configuration
+- Provide memory usage information
+
+**Testing Requirements:**
+- Test CUDA detection
+- Test device selection
+- Test memory monitoring
 
 ## Integration Requirements
 
@@ -337,90 +372,168 @@ tests/
 - Support saving/loading model weights
 - Preserve model configuration
 - Handle vocabulary and tokenizer state
+- Support checkpoint-based training resumption
 
 **Testing Requirements:**
 - Test model save/load roundtrip
 - Test configuration preservation
+- Test checkpoint loading
 
 ### Training Progress
 **MUST:**
 - Display training loss per epoch
 - Show progress bars for long operations
 - Log key metrics to console
+- Support GPU memory monitoring
 
 ## Performance Requirements
 
 ### Training
 **MUST:**
 - Support training on CPU (minimum viable)
+- Support GPU acceleration with CUDA
+- Implement gradient clipping for stability
+
 **SHOULD:**
-- Support GPU acceleration
-- Implement gradient accumulation for large models
+- Support gradient accumulation for large models
+- Implement efficient attention mechanisms
 
 ### Memory
 **MUST:**
 - Handle models up to 125M parameters on 8GB RAM
+- Support configurable batch sizes for memory management
+
 **SHOULD:**
 - Support gradient checkpointing
 - Implement efficient attention mechanisms
 
-## Open Questions
+## Configuration System
 
-### Core Implementation Questions:
-**Model Architecture:**
-- What's the minimum model size that will actually work? (12 layers? 6? 4?)
-- Do we need the full GPT-2 architecture or can we simplify some components?
-- What sequence length should we target? (1024? 512? 256?)
+### TOML Configuration Files
+**MUST:**
+- Support all training parameters (corpus_path, model_name, epochs, batch_size, learning_rate, seq_len)
+- Support model architecture parameters (model_positions, model_embd, model_layer, model_head)
+- Support device and resume options
+- Support generation parameters (max_length, temperature, beam_size, model_seed)
+- Support interactive parameters (max_context_length)
 
-**Training:**
-- What's the minimum dataset size needed to see meaningful results?
-- How many epochs before we can expect coherent text generation?
-- What learning rate and batch size will work without tuning?
+**Configuration Examples:**
+```toml
+# Training configuration
+corpus_path = "data/corpus.txt"
+model_name = "my_model"
+epochs = 10
+batch_size = 12
+learning_rate = 3e-4
+seq_len = 1024
 
-**Tokenization:**
-- Do we implement BPE from scratch or use a simple character-level approach initially?
-- What vocabulary size is practical for a working model?
+# Model architecture
+model_layer = 12
+model_head = 12
+model_embd = 768
 
-**Data:**
-- What text format is simplest to start with? (plain text files?)
-- How do we handle different text lengths and batching?
+# Device and resume
+device = "auto"
+resume = null
 
-### Simplification Questions:
+# Generation parameters
+max_length = 100
+temperature = 0.8
+beam_size = 5
+```
 
-**What can we skip initially?**
-- Do we need position embeddings or can we start without them?
-- Can we skip layer normalization in early iterations?
-- Do we need attention masking or can we assume fixed-length sequences?
+## Main Scripts
 
-**What's the minimum viable product?**
-- Can we start with just forward pass and basic training?
-- Do we need validation/evaluation metrics to know it's working?
-- What's the simplest way to verify the model is learning?
+### Training Script (agi2_train.py)
+**MUST:**
+- Accept TOML configuration file as command line argument
+- Initialize model with configuration parameters
+- Train model for specified epochs
+- Save trained model and checkpoints
+- Support training resumption from checkpoints
 
-*Goal: Identify what's essential for a working model vs. what's optimization. Shortest path from "hello world" to "generating coherent text".*
+**Usage:**
+```bash
+python agi2_train.py resources/my_config.toml
+```
 
+### Generation Script (agi2_generate.py)
+**MUST:**
+- Accept TOML configuration file and prompt text
+- Load trained model from configuration
+- Generate text based on prompt and parameters
+- Support temperature and sampling controls
+
+**Usage:**
+```bash
+python agi2_generate.py resources/my_config.toml "Your prompt here"
+```
+
+### Interactive Script (agi2_interactive.py)
+**MUST:**
+- Accept TOML configuration file
+- Load trained model from configuration
+- Provide interactive conversation interface
+- Maintain conversation context
+
+**Usage:**
+```bash
+python agi2_interactive.py resources/my_config.toml
+```
+
+### Beam Search Script (agi2_generate_beam.py)
+**MUST:**
+- Accept TOML configuration file and prompt text
+- Load trained model from configuration
+- Generate text using beam search algorithm
+- Support configurable beam size
+
+**Usage:**
+```bash
+python agi2_generate_beam.py resources/my_config.toml "Your prompt here"
+```
 
 ## Usage
 
-```python
-from src.model import GPT2Model
-from src.train import train
-from src.interactive import InteractivePrompt
+### Configuration-Based Usage
+All AGI2 functionality is driven by TOML configuration files:
 
-# Load your text data
-with open("your_corpus.txt", "r") as f:
-    text = f.read()
+```bash
+# Training
+python agi2_train.py resources/my_project.toml
 
-# Train model
-model = GPT2Model()
-train(model, text, epochs=10)
-
-# Generate text
-output = model.generate("Hello world", max_length=50)
-print(output)
+# Text generation
+python agi2_generate.py resources/my_project.toml "Your prompt here"
 
 # Interactive conversation
-prompt = InteractivePrompt(model, max_context_length=1024)
+python agi2_interactive.py resources/my_project.toml
+
+# Beam search generation
+python agi2_generate_beam.py resources/my_project.toml "Your prompt here"
+```
+
+### Programmatic Usage
+```python
+from src.model import GPT2Model
+from src.training import train_model
+from src.interactive import InteractivePrompt
+from src.config_loader import load_config
+
+# Load configuration
+config = load_config("resources/my_project.toml")
+
+# Initialize model
+model = GPT2Model(config)
+
+# Train model
+train_model(model, tokenizer, **config)
+
+# Generate text
+from src.generation import generate_text
+output = generate_text(model, "Hello world", max_length=50, tokenizer=tokenizer)
+
+# Interactive conversation
+prompt = InteractivePrompt(model, max_context_length=1024, tokenizer=tokenizer)
 response = prompt.send_message("Hello, how are you today?")
 print(response)
 
@@ -431,3 +544,37 @@ print(response2)
 # Clear context if needed
 prompt.clear_context()
 ```
+
+## Development and Testing
+
+### Environment Setup
+**MUST:**
+- Use uv for dependency management
+- Support Python 3.11+
+- Include comprehensive test suite
+- Support development dependencies
+
+**Setup Commands:**
+```bash
+# Install with development dependencies
+uv sync --extra=dev
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run black src/ tests/
+uv run isort src/ tests/
+```
+
+### Testing Requirements
+**MUST:**
+- Maintain 100% test coverage for core functionality
+- Test all configuration file formats
+- Test training resumption functionality
+- Test GPU and CPU execution paths
+
+**SHOULD:**
+- Include integration tests
+- Test memory management
+- Test error handling scenarios

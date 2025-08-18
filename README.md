@@ -2,6 +2,24 @@
 
 A complete implementation of GPT-2 for training custom language models from text data. This project provides a full pipeline from data preparation to interactive text generation.
 
+## Features
+
+- **Complete GPT-2 Architecture**: Full transformer implementation with attention mechanisms
+- **Custom Tokenizer**: Flexible text tokenization with vocabulary management
+- **Training Pipeline**: Comprehensive training loop with gradient clipping and progress tracking
+- **Text Generation**: Multiple generation strategies (sampling, beam search)
+- **Interactive Mode**: Chat-like interface for testing trained models
+- **Modular Design**: Clean, testable code structure
+- **Configuration-Based**: TOML configuration files for easy parameter management
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11 or higher
+- PyTorch 2.0.0 or higher
+- CUDA (optional, for GPU acceleration)
+
 ### Development Setup
 
 ```bash
@@ -19,33 +37,6 @@ uv run pytest
 uv run black src/ tests/
 uv run isort src/ tests/
 ```
-
-## Testing
-
-Run the test suite to ensure everything works correctly:
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src
-
-# Run specific test categories
-uv run pytest -m unit      # Unit tests only
-uv run pytest -m integration  # Integration tests only
-```
-
-## Features
-
-- **Complete GPT-2 Architecture**: Full transformer implementation with attention mechanisms
-- **Custom Tokenizer**: Flexible text tokenization with vocabulary management
-- **Training Pipeline**: Comprehensive training loop with gradient clipping and progress tracking
-- **Text Generation**: Multiple generation strategies (sampling, beam search)
-- **Interactive Mode**: Chat-like interface for testing trained models
-- **Modular Design**: Clean, testable code structure
-
-## Quick Start
 
 ### Configuration-Based Usage
 
@@ -71,7 +62,27 @@ Configuration files are stored in the `resources/` directory. Each file specifie
 
 - `resources/default.toml` - Default configuration with all parameters
 - `resources/moby_dick.toml` - Example configuration for Moby Dick training
+- `resources/small_model.toml` - Configuration for faster training with smaller model
+- `resources/large_model.toml` - Configuration for higher quality with larger model
 - Create your own `.toml` files for different projects
+
+## Testing
+
+Run the test suite to ensure everything works correctly:
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=src
+
+# Run specific test categories
+uv run pytest -m unit      # Unit tests only
+uv run pytest -m integration  # Integration tests only
+```
+
+## Configuration Management
 
 ### All Available Parameters
 
@@ -105,27 +116,6 @@ The following parameters can be configured in your TOML files:
 - `model_path` - Path to the trained model file (required)
 - `max_context_length` - Maximum context length for chat (default: 1024)
 - `device` - Device to use: "cpu", "cuda", or "auto" (default: "auto")
-
-## Project Structure
-
-```
-src/
-├── model.py          # GPT-2 model architecture
-├── transformer.py    # Transformer blocks and attention
-├── attention.py      # Multi-head attention mechanism
-├── ffn.py           # Feed-forward networks
-├── embeddings.py     # Token and position embeddings
-├── tokenizer.py     # Text tokenization and vocabulary
-├── dataset.py       # Data loading and preprocessing
-├── training.py      # Training functions and loops
-├── generation.py    # Text generation algorithms
-├── interactive.py   # Interactive conversation system
-├── config.py        # Model configuration
-├── config_loader.py # TOML configuration loader
-└── utils.py         # Utility functions
-```
-
-## Configuration Management
 
 ### Creating Custom Configuration Files
 
@@ -172,14 +162,51 @@ device = "cuda"
 batch_size = 32  # Larger batch size for GPU
 ```
 
+## Project Structure
+
+```
+src/
+├── model.py          # GPT-2 model architecture
+├── transformer.py    # Transformer blocks and attention
+├── attention.py      # Multi-head attention mechanism
+├── ffn.py           # Feed-forward networks
+├── embeddings.py     # Token and position embeddings
+├── tokenizer.py     # Text tokenization and vocabulary
+├── dataset.py       # Data loading and preprocessing
+├── training.py      # Training functions and loops
+├── generation.py    # Text generation algorithms
+├── interactive.py   # Interactive conversation system
+├── config.py        # Model configuration
+├── config_loader.py # TOML configuration loader
+└── utils.py         # Utility functions
+```
+
 ## Installation
 
-### Prerequisites
+### Using uv (Recommended)
 
-- Python 3.11 or higher (3.12 recommended)
-- PyTorch 2.0.0 or higher
-- CUDA (optional, for GPU acceleration)
+The project uses `uv` for dependency management, which provides fast, reliable package installation:
 
+```bash
+# Install uv if you don't have it
+pip install uv
+
+# Install project dependencies
+uv sync --extra=dev
+```
+
+### Manual Installation
+
+If you prefer pip:
+
+```bash
+# Install core dependencies
+pip install torch numpy tqdm rich
+
+# Install development dependencies
+pip install pytest pytest-cov pytest-xdist pytest-mock
+pip install black isort flake8 mypy pre-commit
+```
 
 ## Data Preparation
 
@@ -255,7 +282,7 @@ python agi2_train.py resources/resume_training.toml
 
 **What gets reset:**
 - Optimizer state (reinitialized for simplicity)
-- Learning rate (uses the value from command line)
+- Learning rate (uses the value from configuration file)
 
 **Checkpoint files:**
 - `trained/{model_name}.pt_epoch_{N}.pt` - Saved every 5 epochs
@@ -263,7 +290,7 @@ python agi2_train.py resources/resume_training.toml
 
 **Resume workflow:**
 1. Training stops or is interrupted
-2. Use `--resume` with the latest checkpoint file
+2. Use `resume` parameter in configuration file with the latest checkpoint file
 3. Training continues from that epoch
 4. New checkpoints are created with updated epoch numbers
 
@@ -294,7 +321,7 @@ device = "auto"
 ### GPU Acceleration
 
 - The project automatically installs CUDA-enabled PyTorch via `uv sync`
-- Use `device="cuda"` in training functions
+- Use `device="cuda"` in your configuration files
 - Monitor GPU memory usage and adjust batch_size accordingly
 
 ### Memory Management
@@ -324,14 +351,7 @@ uv sync --extra=dev
 
 ### Debug Mode
 
-Enable verbose logging during training:
-
-```python
-training_history = train_model(
-    # ... other parameters ...
-    verbose=True  # Enable detailed progress output
-)
-```
+Enable verbose logging during training by modifying the training script or adding debug parameters to your configuration.
 
 ## Contributing
 
