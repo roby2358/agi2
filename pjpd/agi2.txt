@@ -1,3 +1,8 @@
+Priority:   85
+Status: ToDo
+ID: script-merge-gfst
+Combine the agi2_* scripts into a single script with a command parameter
+---
 Priority:   80
 Status: ToDo
 ID: corpus-f8d8

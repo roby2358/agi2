@@ -11,7 +11,7 @@ model_name = "moby_dick"
 model_path = "trained/moby_dick.pt"
 
 # Training parameters
-epochs = 50
+epochs = 100
 batch_size = 12
 learning_rate = 3e-4
 seq_len = 1024
