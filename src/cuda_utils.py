@@ -12,6 +12,20 @@ from pathlib import Path
 import warnings
 
 
+def check_cuda_available():
+    """
+    Simple function to check if CUDA is available.
+    
+    Returns:
+        bool: True if CUDA is available, False otherwise
+    """
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
 def quick_cuda_check():
     """
     Perform a quick CUDA availability check.

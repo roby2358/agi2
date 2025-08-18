@@ -2,24 +2,27 @@
 """
 AGI2 Text Generation Script
 
-Usage:
-    python agi2_generate.py <config_file> [prompt]
-
-Example:
-    python agi2_generate.py resources/moby_dick.toml "Call me Ishmael"
-    python agi2_generate.py resources/default.toml "Once upon a time"
+This script generates text using a trained AGI2 model.
+Usage: python agi2_generate.py <config_file> <prompt>
 """
 
 import sys
 import torch
 from pathlib import Path
 
-from src.model import GPT2Model
-from src.tokenizer import BasicTokenizer
-from src.generation import generate_text, generate_with_beam_search
-from src.config import GPT2Config
+
+from src.config_loader import load_config, get_config_value
 from src.cuda_utils import check_cuda_availability, get_optimal_device
-from src.config_loader import get_generation_config, get_config_value
+from src.config import AGI2Config
+from src.model import AGI2Model
+from src.tokenizer import BasicTokenizer
+from src.generation import generate_text
+
+
+
+
+
+
 
 
 def main():
@@ -33,7 +36,7 @@ def main():
     
     try:
         # Load configuration from TOML file
-        config = get_generation_config(config_path)
+        config = load_config(config_path)
         print(f"Loaded configuration from: {config_path}")
         
     except Exception as e:
@@ -85,11 +88,11 @@ def main():
                 print(f"Model config: {config_obj}")
             else:
                 # Fallback to default config if not saved
-                print("No config found in checkpoint, using default GPT-2 Small config")
-                config_obj = GPT2Config()
+                print("No config found in checkpoint, using default AGI2 Small config")
+                config_obj = AGI2Config()
             
             # Create new model instance
-            model = GPT2Model(config_obj)
+            model = AGI2Model(config_obj)
             model.load_state_dict(checkpoint['model_state_dict'])
             
             # Load tokenizer if available
@@ -101,7 +104,7 @@ def main():
                 print("Using default tokenizer")
                 
         else:
-            # Assume it's a direct model (for backward compatibility)
+            # Assume it's a direct model
             print("Loading direct model...")
             model = checkpoint
             tokenizer = BasicTokenizer()

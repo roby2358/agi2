@@ -1,16 +1,16 @@
 """
-Utility Functions
+Utility functions for AGI2
 
-This module provides utility functions and helpers for the GPT-2 implementation.
+This module provides various utility functions for model training, evaluation, and management.
 """
 
 import torch
 import torch.nn as nn
 import math
-import time
-from typing import Dict, List, Optional, Tuple, Union
-import json
 import os
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple
+from collections import OrderedDict
 
 
 def count_parameters(model: nn.Module) -> int:

@@ -1,7 +1,7 @@
 """
 Token and Position Embeddings
 
-This module provides TokenEmbeddings and PositionEmbeddings classes for the GPT-2 model.
+This module provides TokenEmbeddings and PositionEmbeddings classes for the AGI2 model.
 """
 
 import math

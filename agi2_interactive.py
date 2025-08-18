@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-AGI2 Interactive Chat Script
+AGI2 Interactive Generation Script
 
-Usage:
-    python agi2_interactive.py <config_file>
-
-Example:
-    python agi2_interactive.py resources/moby_dick.toml
-    python agi2_interactive.py resources/default.toml
+This script provides an interactive interface for text generation with a trained AGI2 model.
+Usage: python agi2_interactive.py <config_file>
 """
 
 import sys
 import torch
 from pathlib import Path
 
-from src.model import GPT2Model
-from src.tokenizer import BasicTokenizer
-from src.interactive import InteractivePrompt
-from src.config import GPT2Config
-from src.cuda_utils import check_cuda_availability, get_optimal_device
+
 from src.config_loader import get_interactive_config, get_config_value
+from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config import AGI2Config
+from src.model import AGI2Model
+from src.tokenizer import BasicTokenizer
+from src.generation import generate_interactive
+
+
+
+
+
+
 
 
 def main():
@@ -67,7 +70,7 @@ def main():
         tokenizer = BasicTokenizer()
         
         # Create interactive session
-        chat = InteractivePrompt(
+        chat = generate_interactive(
             model=model,
             max_context_length=max_context_length,
             tokenizer=tokenizer

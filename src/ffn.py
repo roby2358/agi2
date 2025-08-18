@@ -1,7 +1,7 @@
 """
 Feed-Forward Network
 
-This module provides the FeedForward class for the GPT-2 model.
+This module provides the FeedForward class for the AGI2 model.
 """
 
 import torch

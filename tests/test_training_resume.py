@@ -1,22 +1,45 @@
-"""
-Test resume training functionality
-"""
+"""Tests for training resume functionality."""
 
 import pytest
 import torch
 import tempfile
 import os
+import shutil
 import warnings
 from pathlib import Path
 
-from src.model import GPT2Model
-from src.config import GPT2Config
+from src.model import AGI2Model
+from src.config import AGI2Config
 from src.tokenizer import BasicTokenizer
+from src.dataset import TextDataset
 from src.training import train_model
+from src.utils import save_checkpoint, load_checkpoint
 
 
-class TestResumeTraining:
-    """Test resume training functionality"""
+class TestTrainingResume:
+    """Test cases for training resume functionality."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.config = AGI2Config(
+            vocab_size=1000,
+            n_layer=2,
+            n_head=4,
+            n_embd=64,
+            n_positions=128,
+            n_ctx=128
+        )
+        self.model = AGI2Model(self.config)
+        
+        self.tokenizer = BasicTokenizer()
+        self.tokenizer.fit(["hello world test"])
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("hello world test " * 100)  # Simple repeating text
+            self.corpus_path = f.name
+        
+        self.checkpoint_path = None
+        self.final_path = None
     
     def test_resume_training_basic(self):
         """Test basic resume training functionality"""
@@ -25,14 +48,14 @@ class TestResumeTraining:
             warnings.filterwarnings("ignore", category=FutureWarning, module="torch.serialization")
             
             # Create a simple model
-            config = GPT2Config(
+            config = AGI2Config(
                 vocab_size=100,
                 n_positions=64,
                 n_embd=64,
                 n_layer=2,
                 n_head=2
             )
-            model = GPT2Model(config)
+            model = AGI2Model(config)
             
             # Create a simple tokenizer
             tokenizer = BasicTokenizer()
@@ -77,7 +100,7 @@ class TestResumeTraining:
                 assert checkpoint['epoch'] == 5, "Checkpoint should have correct epoch"
                 
                 # Create new model instance
-                model2 = GPT2Model(config)
+                model2 = AGI2Model(config)
                 
                 # Resume training for 1 more epoch
                 history2 = train_model(
@@ -115,14 +138,14 @@ class TestResumeTraining:
     
     def test_resume_training_invalid_checkpoint(self):
         """Test resume training with invalid checkpoint path"""
-        config = GPT2Config(
+        config = AGI2Config(
             vocab_size=100,
             n_positions=64,
             n_embd=64,
             n_layer=2,
             n_head=2
         )
-        model = GPT2Model(config)
+        model = AGI2Model(config)
         
         tokenizer = BasicTokenizer()
         tokenizer.fit(["hello world"])

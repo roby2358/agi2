@@ -1,7 +1,7 @@
 """
-Multi-Head Self-Attention
+Multi-Head Attention
 
-This module provides the MultiHeadAttention class for the GPT-2 model.
+This module provides the MultiHeadAttention class for the AGI2 model.
 """
 
 import torch

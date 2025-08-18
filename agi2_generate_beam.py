@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-AGI2 Beam Search Text Generation Script
+AGI2 Beam Search Generation Script
 
-Usage:
-    python agi2_generate_beam.py <config_file> [prompt]
-
-Example:
-    python agi2_generate_beam.py resources/moby_dick.toml "The future of AI is"
-    python agi2_generate_beam.py resources/default.toml "Call me Ishmael"
+This script generates text using beam search with a trained AGI2 model.
+Usage: python agi2_generate_beam.py <config_file> <prompt>
 """
 
 import sys
 import torch
 from pathlib import Path
 
-from src.model import GPT2Model
+
+from src.config_loader import get_generation_config, get_config_value
+from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config import AGI2Config
+from src.model import AGI2Model
 from src.tokenizer import BasicTokenizer
 from src.generation import generate_with_beam_search
-from src.config import GPT2Config
-from src.cuda_utils import check_cuda_availability, get_optimal_device
-from src.config_loader import get_generation_config, get_config_value
+
+
+
+
+
+
 
 
 def main():

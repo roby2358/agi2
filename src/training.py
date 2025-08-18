@@ -1,40 +1,46 @@
 """
 Training Functions
 
-This module provides training functions and training loop for the GPT-2 model.
+This module provides training functions and training loop for the AGI2 model.
 """
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from typing import Dict, List, Optional, Tuple
-import time
+import logging
 from pathlib import Path
+import os
+import time
+from typing import Optional, Dict, Any
+
 from .dataset import TextDataset
+from .utils import save_checkpoint, load_checkpoint
+
+logger = logging.getLogger(__name__)
 
 
 def train_epoch(
-    model: nn.Module,
+    model,
     dataloader: DataLoader,
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     device: torch.device,
     clip_grad_norm: float = 1.0
-) -> float:
+) -> Dict[str, float]:
     """
     Train the model for one epoch.
     
     Args:
-        model: The GPT-2 model to train
+        model: The AGI2 model to train
         dataloader: DataLoader for training data
-        optimizer: Optimizer for updating weights
+        optimizer: Optimizer for training
         criterion: Loss function
         device: Device to train on
-        clip_grad_norm: Maximum gradient norm for clipping
+        clip_grad_norm: Gradient clipping norm value
         
     Returns:
-        Average training loss for the epoch
+        Dictionary containing training metrics
     """
     model.train()
     total_loss = 0.0
@@ -83,36 +89,33 @@ def train_epoch(
 
 
 def train_model(
-    model: nn.Module,
+    model,
     tokenizer,
     corpus_path: str,
-    epochs: int,
+    epochs: int = 10,
     batch_size: int = 4,
-    learning_rate: float = 3e-4,
-    seq_len: int = 1024,
-    device: str = "cpu",
-    save_path: Optional[str] = None,
+    learning_rate: float = 1e-4,
+    seq_len: int = 512,
+    device: str = "auto",
+    save_path: str = "model",
     start_epoch: int = 0,
-    **kwargs
-) -> Dict[str, List[float]]:
+    resume_path: Optional[str] = None
+) -> None:
     """
-    Train the model from start to finish.
+    Train the AGI2 model on text data.
     
     Args:
-        model: The GPT-2 model to train
-        tokenizer: Pre-fitted tokenizer to use for text processing
-        corpus_path: Path to the text corpus file
+        model: The AGI2 model to train
+        tokenizer: Tokenizer for text processing
+        corpus_path: Path to training corpus file
         epochs: Number of training epochs
-        batch_size: Batch size for training
+        batch_size: Training batch size
         learning_rate: Learning rate for optimizer
-        seq_len: Sequence length for training
-        device: Device to train on ('cpu' or 'cuda')
-        save_path: Model name for saving (files will be saved to trained/{save_path}.pt)
-        start_epoch: Epoch to start training from (for resuming)
-        **kwargs: Additional arguments
-        
-    Returns:
-        Dictionary containing training history
+        seq_len: Maximum sequence length for training
+        device: Device to train on (auto, cpu, cuda)
+        save_path: Base path for saving checkpoints
+        start_epoch: Starting epoch (for resume training)
+        resume_path: Path to resume checkpoint (optional)
     """
     device = torch.device(device)
     model = model.to(device)

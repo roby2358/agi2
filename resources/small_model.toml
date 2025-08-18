@@ -7,7 +7,7 @@ model_name = "small_model"
 model_path = "trained/small_model.pt"
 
 # Training parameters - optimized for speed
-epochs = 200
+epochs = 50
 batch_size = 16
 learning_rate = 5e-4
 seq_len = 512

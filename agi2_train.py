@@ -2,31 +2,36 @@
 """
 AGI2 Training Script
 
-Usage:
-    python agi2_train.py <config_file>
-
-Example:
-    python agi2_train.py resources/moby_dick.toml
-    python agi2_train.py resources/default.toml
+This script trains an AGI2 model on text data.
+Usage: python agi2_train.py <config_file>
 """
 
 import sys
 import torch
 from pathlib import Path
 
-from src.model import GPT2Model
+import argparse
+import logging
+import os
+
+from src.config_loader import get_training_config, get_config_value
+from src.cuda_utils import check_cuda_availability, get_optimal_device
+from src.config import AGI2Config
+from src.model import AGI2Model
 from src.tokenizer import BasicTokenizer
 from src.training import train_model
-from src.config import GPT2Config
-from src.utils import load_checkpoint
-from src.cuda_utils import check_cuda_availability, get_optimal_device
-from src.config_loader import get_training_config, get_config_value
+
+
+
+
+
+
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print("Usage: python agi2_train.py <config_file>")
-        print("Example: python agi2_train.py resources/moby_dick.toml")
+        print("Example: python agi2_train.py resources/small_model.toml")
         sys.exit(1)
     
     config_path = sys.argv[1]
@@ -40,85 +45,57 @@ def main():
         print(f"Error loading configuration: {e}")
         sys.exit(1)
     
-    # Check CUDA availability at startup
+    # Check CUDA availability
     print("Checking CUDA availability for training...")
     cuda_status = check_cuda_availability(verbose=True)
     
-    # Print GPU memory monitoring command
-    print("\nTo monitor GPU memory during training, use:")
-    print("  nvidia-smi -l 1  # Updates every 1 second")
-    print("  watch -n 1 nvidia-smi  # Updates every 1 second (Linux/Mac)")
-    print("  # On Windows, use Task Manager > Performance > GPU\n")
-    
-    # Extract configuration values with defaults
-    corpus_path = Path(get_config_value(config, 'corpus_path'))
+    # Extract configuration values
+    corpus_path = get_config_value(config, 'corpus_path')
+    model_name = get_config_value(config, 'model_name')
     epochs = get_config_value(config, 'epochs', 10)
-    batch_size = get_config_value(config, 'batch_size', 12)
-    learning_rate = get_config_value(config, 'learning_rate', 3e-4)
-    seq_len = get_config_value(config, 'seq_len', 1024)
-    model_name = get_config_value(config, 'model_name', 'model')
-    resume_path = get_config_value(config, 'resume')
+    batch_size = get_config_value(config, 'batch_size', 4)
+    learning_rate = get_config_value(config, 'learning_rate', 1e-4)
+    seq_len = get_config_value(config, 'seq_len', 512)
     device_choice = get_config_value(config, 'device', 'auto')
-    
-    # Model architecture parameters (optional)
-    model_positions = get_config_value(config, 'model_positions', 1024)
-    model_embd = get_config_value(config, 'model_embd', 768)
-    model_layer = get_config_value(config, 'model_layer', 12)
-    model_head = get_config_value(config, 'model_head', 12)
+    resume_path = get_config_value(config, 'resume', '')
     
     # Validate corpus path
-    if not corpus_path.exists():
+    if not Path(corpus_path).exists():
         print(f"Error: Corpus file not found: {corpus_path}")
         sys.exit(1)
     
-    # Validate resume checkpoint if provided
-    if resume_path:
-        resume_path = Path(resume_path)
-        if not resume_path.exists():
-            print(f"Error: Resume checkpoint not found: {resume_path}")
-            sys.exit(1)
-        print(f"Resuming training from checkpoint: {resume_path}")
-    
-    # Determine device using our utility
+    # Determine device
     device = get_optimal_device(device_choice)
-    
     print(f"Using device: {device}")
-    print(f"Training on corpus: {corpus_path}")
-    print(f"Model name: {model_name}")
-    print(f"Epochs: {epochs}")
-    print(f"Batch size: {batch_size}")
-    print(f"Learning rate: {learning_rate}")
-    print(f"Sequence length: {seq_len}")
     
-    # Initialize tokenizer and build vocabulary first
-    tokenizer = BasicTokenizer()
+    # Create output directory
+    os.makedirs("trained", exist_ok=True)
     
     # Load a sample of text to build vocabulary
     print("Building vocabulary from corpus...")
     with open(corpus_path, 'r', encoding='utf-8') as f:
         sample_text = f.read()[:50000]  # First 50k characters for vocab building
     
+    tokenizer = BasicTokenizer()
     tokenizer.fit([sample_text])
     actual_vocab_size = tokenizer.vocab_size
     
     print(f"Vocabulary built with {actual_vocab_size} tokens")
     
-    # Initialize model with correct vocabulary size
-    model_config = GPT2Config(
-        vocab_size=actual_vocab_size,  # Use actual vocab size from tokenizer
-        n_positions=model_positions,
-        n_embd=model_embd,
-        n_layer=model_layer,
-        n_head=model_head
+    # Create model configuration
+    model_config = AGI2Config(
+        vocab_size=actual_vocab_size,
+        n_positions=seq_len,
+        n_ctx=seq_len
     )
     
-    model = GPT2Model(model_config)
-    
+    # Create model
+    model = AGI2Model(model_config)
     print(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters")
     
     # Resume from checkpoint if specified
     start_epoch = 0
-    if resume_path:
+    if resume_path and Path(resume_path).exists():
         print(f"Loading checkpoint from {resume_path}...")
         checkpoint = torch.load(resume_path, map_location=device)
         
@@ -139,15 +116,15 @@ def main():
     try:
         training_history = train_model(
             model=model,
-            tokenizer=tokenizer,  # Pass the fitted tokenizer
-            corpus_path=str(corpus_path),
+            tokenizer=tokenizer,
+            corpus_path=corpus_path,
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,
             seq_len=seq_len,
             device=device,
-            save_path=model_name,
-            start_epoch=start_epoch  # Pass starting epoch
+            save_path=f"trained/{model_name}",
+            start_epoch=start_epoch
         )
         
         print(f"Training completed successfully!")
@@ -155,6 +132,8 @@ def main():
         
     except Exception as e:
         print(f"Training failed with error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

@@ -14,7 +14,7 @@ class InteractivePrompt:
     Interactive prompt system that maintains conversation context.
     
     Args:
-        model: The GPT-2 model to use for generation
+        model: The AGI2 model to use for generation
         max_context_length: Maximum length of conversation context
         tokenizer: Tokenizer for text processing
     """

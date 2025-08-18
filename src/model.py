@@ -1,27 +1,27 @@
 """
-GPT-2 Model
+AGI2 Model
 
-This module provides the main GPT2Model class that integrates all components.
+This module provides the main AGI2Model class that integrates all components.
 """
 
 import torch
 import torch.nn as nn
 from typing import Optional, Tuple
 
-from .config import GPT2Config
+from .config import AGI2Config
 from .embeddings import TokenEmbeddings, PositionEmbeddings
 from .transformer import TransformerBlock
 
 
-class GPT2Model(nn.Module):
+class AGI2Model(nn.Module):
     """
-    Complete GPT-2 model implementation.
+    Complete AGI2 model implementation.
     
     Args:
-        config: GPT2Config object containing model parameters
+        config: AGI2Config object containing model parameters
     """
     
-    def __init__(self, config: GPT2Config):
+    def __init__(self, config: AGI2Config):
         super().__init__()
         self.config = config
         
@@ -79,7 +79,7 @@ class GPT2Model(nn.Module):
         return_dict: bool = False
     ) -> torch.Tensor:
         """
-        Forward pass through the GPT-2 model.
+        Forward pass through the AGI2 model.
         
         Args:
             input_ids: Token IDs tensor of shape (batch_size, seq_len)

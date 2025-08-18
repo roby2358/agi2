@@ -1,45 +1,33 @@
-"""Tests for training functions."""
+"""Tests for training functionality."""
+
 import pytest
 import torch
-from src.training import train_epoch
-import unittest
 import tempfile
 import os
+from pathlib import Path
 from unittest.mock import Mock, patch
-from src.training import train_model
-from src.model import GPT2Model
-from src.config import GPT2Config
+
+from src.model import AGI2Model
+from src.config import AGI2Config
 from src.tokenizer import BasicTokenizer
+from src.dataset import TextDataset
+from src.training import train_epoch, train_model
 
 
 class TestTraining:
-    def test_train_epoch_signature(self):
-        """Test that train_epoch function has correct signature."""
-        # This is a basic test to ensure the function exists and has correct signature
-        assert callable(train_epoch)
-        
-        # Check that it takes the expected parameters
-        import inspect
-        sig = inspect.signature(train_epoch)
-        params = list(sig.parameters.keys())
-        
-        expected_params = ['model', 'dataloader', 'optimizer', 'criterion', 'device']
-        for param in expected_params:
-            assert param in params
-
-
-class TestTraining(unittest.TestCase):
+    """Test cases for training functionality."""
     
-    def setUp(self):
-        # Create a minimal model for testing
-        self.config = GPT2Config(
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.config = AGI2Config(
             vocab_size=1000,
-            n_positions=128,
-            n_embd=64,
             n_layer=2,
-            n_head=2
+            n_head=4,
+            n_embd=64,
+            n_positions=128,
+            n_ctx=128
         )
-        self.model = GPT2Model(self.config)
+        self.model = AGI2Model(self.config)
         self.tokenizer = BasicTokenizer()
         self.tokenizer.fit(["test text for vocabulary"])
         
@@ -48,11 +36,22 @@ class TestTraining(unittest.TestCase):
         self.original_cwd = os.getcwd()
         os.chdir(self.temp_dir)
     
-    def tearDown(self):
-        # Clean up
+    def teardown_method(self):
+        """Clean up test fixtures."""
         os.chdir(self.original_cwd)
         import shutil
         shutil.rmtree(self.temp_dir)
+    
+    def test_train_epoch_signature(self):
+        """Test that train_epoch function has correct signature."""
+        # This is a basic test to ensure the function exists and has correct signature
+        import inspect
+        sig = inspect.signature(train_epoch)
+        params = list(sig.parameters.keys())
+        
+        expected_params = ['model', 'dataloader', 'optimizer', 'criterion', 'device']
+        for param in expected_params:
+            assert param in params
     
     @patch('src.training.TextDataset')
     @patch('src.training.DataLoader')
@@ -99,25 +98,21 @@ class TestTraining(unittest.TestCase):
             )
             
             # Check that the trained directory was created
-            self.assertTrue(os.path.exists("trained"))
+            assert os.path.exists("trained")
             
             # Check that the final model was saved with correct name
-            self.assertTrue(os.path.exists("trained/test_model.pt"))
+            assert os.path.exists("trained/test_model.pt")
             
             # Check that no _final suffix was added
-            self.assertFalse(os.path.exists("trained/test_model_final.pt"))
+            assert not os.path.exists("trained/test_model_final.pt")
             
         except Exception as e:
             # Training might fail due to mocked components, but we can still check directory creation
             if "trained" in os.listdir():
-                self.assertTrue(os.path.exists("trained"))
+                assert os.path.exists("trained")
             else:
-                self.fail(f"Training failed unexpectedly: {e}")
+                pytest.fail(f"Training failed unexpectedly: {e}")
         
         # Clean up
         if os.path.exists(corpus_path):
             os.remove(corpus_path)
-
-
-if __name__ == '__main__':
-    unittest.main()

@@ -1,5 +1,5 @@
-"""
-Test package for AGI2 GPT-2 implementation.
+"""Test package for AGI2 implementation."""
 
-This package contains unit tests for all components of the GPT-2 model.
+"""
+This package contains unit tests for all components of the AGI2 model.
 """

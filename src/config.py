@@ -1,18 +1,18 @@
 """
-GPT-2 Configuration Management
+AGI2 Configuration Management
 
-This module provides the GPT2Config class for managing model architecture parameters.
+This module provides the AGI2Config class for managing model architecture parameters.
 """
 
 from typing import Optional
 import torch
 
 
-class GPT2Config:
+class AGI2Config:
     """
-    Configuration class for GPT-2 model architecture.
+    Configuration class for AGI2 model architecture.
     
-    Defaults to GPT-2 Small configuration (12 layers, 12 heads, 768 dimensions).
+    Defaults to AGI2 Small configuration (12 layers, 12 heads, 768 dimensions).
     """
     
     def __init__(
@@ -56,7 +56,7 @@ class GPT2Config:
         self.tie_word_embeddings = tie_word_embeddings
     
     @classmethod
-    def from_preset(cls, preset: str) -> "GPT2Config":
+    def from_preset(cls, preset: str) -> "AGI2Config":
         """Create configuration from preset (Small, Medium, Large)."""
         presets = {
             "small": cls(n_layer=12, n_head=12, n_embd=768),
@@ -68,4 +68,4 @@ class GPT2Config:
         return presets[preset]
     
     def __repr__(self) -> str:
-        return f"GPT2Config(n_layer={self.n_layer}, n_head={self.n_head}, n_embd={self.n_embd})"
+        return f"AGI2Config(n_layer={self.n_layer}, n_head={self.n_head}, n_embd={self.n_embd})"

@@ -1,13 +1,15 @@
 """
 Text Generation
 
-This module provides text generation functions for the GPT-2 model.
+This module provides text generation functions for the AGI2 model.
 """
 
 import torch
 import torch.nn.functional as F
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple
 import random
+
+from .tokenizer import BasicTokenizer
 
 
 def generate_text(
@@ -15,23 +17,22 @@ def generate_text(
     prompt: str,
     max_length: int = 50,
     temperature: float = 1.0,
-    top_k: Optional[int] = None,
-    top_p: Optional[float] = None,
+    top_k: int = 50,
+    top_p: float = 0.9,
     tokenizer = None,
     device: str = "cpu"
 ) -> str:
     """
-    Generate text from a prompt using the GPT-2 model.
+    Generate text from a prompt using the AGI2 model.
     
     Args:
-        model: The trained GPT-2 model
         prompt: Input text prompt
         max_length: Maximum length of generated text
         temperature: Sampling temperature (higher = more random)
         top_k: Top-k sampling parameter
         top_p: Top-p (nucleus) sampling parameter
-        tokenizer: Tokenizer to use for encoding/decoding
-        device: Device to run generation on
+        model: The trained AGI2 model
+        tokenizer: Tokenizer for encoding/decoding
         
     Returns:
         Generated text string
@@ -39,7 +40,6 @@ def generate_text(
     if tokenizer is None:
         raise ValueError("Tokenizer is required for text generation")
     
-    device = torch.device(device)
     model = model.to(device)
     model.eval()
     
@@ -95,28 +95,29 @@ def generate_with_beam_search(
     model,
     prompt: str,
     max_length: int = 50,
-    beam_size: int = 5,
+    beam_width: int = 5,
+    temperature: float = 1.0,
     tokenizer = None,
     device: str = "cpu"
-) -> List[str]:
+) -> str:
     """
     Generate text using beam search for better quality.
     
     Args:
-        model: The trained GPT-2 model
         prompt: Input text prompt
         max_length: Maximum length of generated text
-        beam_size: Number of beams for search
-        tokenizer: Tokenizer to use for encoding/decoding
+        beam_width: Number of beams to maintain
+        temperature: Sampling temperature
+        model: The trained AGI2 model
+        tokenizer: Tokenizer for encoding/decoding
         device: Device to run generation on
         
     Returns:
-        List of generated text strings (one per beam)
+        Generated text string
     """
     if tokenizer is None:
         raise ValueError("Tokenizer is required for text generation")
     
-    device = torch.device(device)
     model = model.to(device)
     model.eval()
     
@@ -137,7 +138,7 @@ def generate_with_beam_search(
                 next_token_logits = outputs[0, -1, :]
                 
                 # Get top-k tokens
-                top_k_logits, top_k_indices = torch.topk(next_token_logits, beam_size)
+                top_k_logits, top_k_indices = torch.topk(next_token_logits, beam_width)
                 
                 for logit, token_id in zip(top_k_logits, top_k_indices):
                     new_seq = torch.cat([beam_seq, token_id.unsqueeze(0).unsqueeze(0)], dim=1)
@@ -145,7 +146,7 @@ def generate_with_beam_search(
                     new_beams.append((new_seq, new_score))
             
             # Keep top beams
-            beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:beam_size]
+            beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:beam_width]
             
             # Check if all beams end with end token
             if all(beam[0][0, -1].item() == tokenizer.vocab.get('<EOS>', -1) for beam in beams):
@@ -171,7 +172,7 @@ def generate_interactive(
     Interactive text generation loop.
     
     Args:
-        model: The trained GPT-2 model
+        model: The trained AGI2 model
         tokenizer: Tokenizer to use for encoding/decoding
         max_length: Maximum length of generated text
         temperature: Sampling temperature
