@@ -99,6 +99,17 @@ ID: corpus20-hsh8
 Build corpus20.txt: Rhetorical Melee Drills content
 A free-flowing, dynamic exchange of arguments and counter-arguments
 ---
+Priority:   70
+Status: ToDo
+ID: lora-train-hhgd
+Train a LoRA for more consistent conversation
+
+Implementation requirements:
+- LoRA layer implementation (rank decomposition matrices)
+- Integration with your existing attention and FFN layers  
+- LoRA-specific training configuration
+- Merge functionality to combine LoRA weights with base model
+---
 Priority:   60
 Status: ToDo
 ID: api-zbgu

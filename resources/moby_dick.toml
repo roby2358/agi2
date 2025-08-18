@@ -3,18 +3,15 @@
 
 # Training data sources - list of corpus files
 sources = [
-    "samples/moby_dick.txt",
-    "resources/training/corpus.txt",
-    "resources/training/corpus01.txt",
+    "samples/moby_dick_pg2701.txt",
     "resources/training/corpus20.txt"
 ]
-
 
 model_name = "moby_dick"
 model_path = "trained/moby_dick.pt"
 
 # Training parameters
-epochs = 10
+epochs = 50
 batch_size = 12
 learning_rate = 3e-4
 seq_len = 1024
