@@ -29,14 +29,7 @@ class TestSourcesList:
         sources = get_sources_list(config)
         assert sources == ['file1.txt', 'file2.txt', 'file3.txt']
     
-    def test_get_sources_list_legacy_format(self):
-        """Test getting sources list from legacy 'corpus_path' config."""
-        config = {
-            'corpus_path': 'legacy_corpus.txt'
-        }
-        
-        sources = get_sources_list(config)
-        assert sources == ['legacy_corpus.txt']
+
     
     def test_get_sources_list_empty_sources(self):
         """Test that empty sources list raises error."""
@@ -47,11 +40,11 @@ class TestSourcesList:
         with pytest.raises(ValueError, match="Sources list cannot be empty"):
             get_sources_list(config)
     
-    def test_get_sources_list_missing_both(self):
-        """Test that missing both sources and corpus_path raises error."""
+    def test_get_sources_list_missing_sources(self):
+        """Test that missing sources raises error."""
         config = {}
         
-        with pytest.raises(ValueError, match="Configuration must contain either 'sources' list or 'corpus_path'"):
+        with pytest.raises(ValueError, match="Configuration must contain 'sources' list"):
             get_sources_list(config)
     
     def test_dataset_with_sources_list(self):
@@ -86,7 +79,7 @@ class TestSourcesList:
             assert stats['sources'] == sources
     
     def test_dataset_with_single_source(self):
-        """Test TextDataset with single source (backward compatibility)."""
+        """Test TextDataset with single source."""
         with tempfile.TemporaryDirectory() as temp_dir:
             file_path = os.path.join(temp_dir, 'single_file.txt')
             

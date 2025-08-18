@@ -79,7 +79,7 @@ class TestTrainingResume:
                 history1 = train_model(
                     model=model,
                     tokenizer=tokenizer,
-                    sources=corpus_path,
+                    sources=[corpus_path],
                     epochs=5,
                     batch_size=2,
                     seq_len=32,
@@ -106,7 +106,7 @@ class TestTrainingResume:
                 history2 = train_model(
                     model=model2,
                     tokenizer=tokenizer,
-                    sources=corpus_path,
+                    sources=[corpus_path],
                     epochs=1,
                     batch_size=2,
                     seq_len=32,
@@ -162,7 +162,7 @@ class TestTrainingResume:
             history = train_model(
                 model=model,
                 tokenizer=tokenizer,
-                sources=corpus_path,
+                sources=[corpus_path],
                 epochs=1,
                 batch_size=2,
                 seq_len=32,

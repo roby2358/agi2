@@ -44,7 +44,7 @@ The `resources/` directory contains several example configurations:
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `corpus_path` | ✅ | - | Path to training corpus file |
+| `sources` | ✅ | - | List of training data source files |
 | `model_name` | ✅ | - | Name for the model |
 | `epochs` | ❌ | 10 | Number of training epochs |
 | `batch_size` | ❌ | 12 | Training batch size |
@@ -93,7 +93,7 @@ cp resources/default.toml resources/my_project.toml
 
 ```toml
 # My Project Configuration
-corpus_path = "data/my_corpus.txt"
+sources = ["data/my_corpus.txt"]
 model_name = "my_project"
 epochs = 15
 batch_size = 16
@@ -112,7 +112,7 @@ python agi2_train.py resources/my_project.toml
 ### Fast Training (Small Model)
 
 ```toml
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 model_name = "fast_model"
 epochs = 5
 batch_size = 16
@@ -125,7 +125,7 @@ seq_len = 512
 ### High Quality (Large Model)
 
 ```toml
-corpus_path = "data/large_corpus.txt"
+sources = ["data/large_corpus.txt"]
 model_name = "quality_model"
 epochs = 20
 batch_size = 8
@@ -138,7 +138,7 @@ seq_len = 2048
 ### GPU Training
 
 ```toml
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 model_name = "gpu_model"
 device = "cuda"
 batch_size = 32
@@ -148,7 +148,7 @@ epochs = 10
 ### Resume Training
 
 ```toml
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 model_name = "my_model"
 resume = "trained/my_model.pt_epoch_10.pt"
 epochs = 5
@@ -198,7 +198,7 @@ model_name = "model"
 # Trained on: 2024-01-15
 # Purpose: Generate sonnet-style poetry
 # Notes: Reduced learning rate for stability
-corpus_path = "data/shakespeare_sonnets.txt"
+sources = ["data/shakespeare_sonnets.txt"]
 model_name = "shakespeare_sonnets_v1"
 learning_rate = 1e-4  # Reduced from 3e-4
 ```
@@ -217,7 +217,7 @@ git commit -m "Add configuration for experiment with larger model"
 ### Common Issues
 
 1. **File Not Found**: Ensure the configuration file path is correct
-2. **Missing Required Parameters**: Check that `corpus_path` and `model_name` are set
+2. **Missing Required Parameters**: Check that `sources` and `model_name` are set
 3. **Invalid TOML**: Use a TOML validator to check syntax
 4. **Path Issues**: Use forward slashes or escaped backslashes in Windows paths
 
@@ -227,7 +227,7 @@ The configuration loader will validate your configuration and provide helpful er
 
 ```bash
 python agi2_train.py resources/invalid.toml
-# Error: Missing required configuration keys: ['corpus_path']
+# Error: Missing required configuration keys: ['sources']
 ```
 
 ## Migration from Command Line
@@ -242,7 +242,7 @@ python agi2_train.py data/corpus.txt --epochs 20 --batch-size 8 --learning-rate 
 
 **resources/my_config.toml:**
 ```toml
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 epochs = 20
 batch_size = 8
 learning_rate = 1e-4

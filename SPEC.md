@@ -249,7 +249,7 @@ resources/
 
 ### 9. Data Loading Pipeline (data-nkyd)
 **MUST:**
-- Implement `TextDataset(corpus_path: str, tokenizer, seq_len: int)` class
+- Implement `TextDataset(sources: str | list[str], tokenizer, seq_len: int)` class
 - Support `__len__()` and `__getitem__(idx)` methods
 - Return tokenized sequences of specified length
 - Handle file reading and text preprocessing
@@ -284,7 +284,7 @@ resources/
 
 ### 11. Training Function (train-aaab)
 **MUST:**
-- Implement `train_model(model, tokenizer, corpus_path, epochs, **kwargs)` function
+- Implement `train_model(model, tokenizer, sources, epochs, **kwargs)` function
 - Handle model training from start to finish
 - Save checkpoints periodically
 - Return training history
@@ -411,7 +411,7 @@ resources/
 
 ### TOML Configuration Files
 **MUST:**
-- Support all training parameters (corpus_path, model_name, epochs, batch_size, learning_rate, seq_len)
+- Support all training parameters (sources, model_name, epochs, batch_size, learning_rate, seq_len)
 - Support model architecture parameters (model_positions, model_embd, model_layer, model_head)
 - Support device and resume options
 - Support generation parameters (max_length, temperature, beam_size, model_seed)
@@ -420,7 +420,7 @@ resources/
 **Configuration Examples:**
 ```toml
 # Training configuration
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 model_name = "my_model"
 epochs = 10
 batch_size = 12

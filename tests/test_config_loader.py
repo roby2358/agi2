@@ -24,7 +24,8 @@ class TestConfigLoader:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
             # Test config
-            corpus_path = "test.txt"
+            sources = ["test.txt"]
+            model_name = "test_model"
             epochs = 5
             learning_rate = 1e-4
             """)
@@ -32,7 +33,8 @@ class TestConfigLoader:
         
         try:
             config = load_config(temp_path)
-            assert config['corpus_path'] == "test.txt"
+            assert config['sources'] == ["test.txt"]
+            assert config['model_name'] == "test_model"
             assert config['epochs'] == 5
             assert config['learning_rate'] == 1e-4
         finally:
@@ -48,7 +50,8 @@ class TestConfigLoader:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
             # Invalid TOML
-            corpus_path = "test.txt"
+            sources = ["test.txt"]
+            model_name = "test_model"
             epochs = 5
             learning_rate = 1e-4
             [invalid_section
@@ -63,10 +66,10 @@ class TestConfigLoader:
     
     def test_get_config_value_with_default(self):
         """Test getting configuration values with default fallbacks."""
-        config = {'corpus_path': 'test.txt', 'epochs': 10}
+        config = {'sources': ['test.txt'], 'epochs': 10}
         
         # Existing key
-        assert get_config_value(config, 'corpus_path') == 'test.txt'
+        assert get_config_value(config, 'sources') == ['test.txt']
         assert get_config_value(config, 'epochs') == 10
         
         # Non-existing key with default
@@ -78,16 +81,16 @@ class TestConfigLoader:
     
     def test_validate_required_config_success(self):
         """Test successful validation of required configuration keys."""
-        config = {'corpus_path': 'test.txt', 'model_name': 'test_model'}
-        required_keys = ['corpus_path', 'model_name']
+        config = {'sources': ['test.txt'], 'model_name': 'test_model'}
+        required_keys = ['sources', 'model_name']
         
         # Should not raise an exception
         validate_required_config(config, required_keys)
     
     def test_validate_required_config_missing_keys(self):
         """Test validation failure when required keys are missing."""
-        config = {'corpus_path': 'test.txt'}
-        required_keys = ['corpus_path', 'model_name', 'epochs']
+        config = {'sources': ['test.txt']}
+        required_keys = ['sources', 'model_name', 'epochs']
         
         with pytest.raises(ValueError, match="Missing required configuration keys"):
             validate_required_config(config, required_keys)
@@ -96,7 +99,7 @@ class TestConfigLoader:
         """Test successful loading of training configuration."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
-            corpus_path = "test.txt"
+            sources = ["test.txt"]
             model_name = "test_model"
             epochs = 5
             batch_size = 16
@@ -105,7 +108,7 @@ class TestConfigLoader:
         
         try:
             config = get_training_config(temp_path)
-            assert config['corpus_path'] == "test.txt"
+            assert config['sources'] == ["test.txt"]
             assert config['model_name'] == "test_model"
             assert config['epochs'] == 5
             assert config['batch_size'] == 16
@@ -123,7 +126,7 @@ class TestConfigLoader:
             temp_path = f.name
         
         try:
-            with pytest.raises(ValueError, match="Configuration must contain either 'sources' list or 'corpus_path'"):
+            with pytest.raises(ValueError, match="Missing required configuration keys"):
                 get_training_config(temp_path)
         finally:
             os.unlink(temp_path)

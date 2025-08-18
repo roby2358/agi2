@@ -89,7 +89,7 @@ uv run pytest -m integration  # Integration tests only
 The following parameters can be configured in your TOML files:
 
 #### Training Parameters (agi2_train.py)
-- `corpus_path` - Path to the training corpus file (required)
+- `sources` - List of training data source files (required)
 - `model_name` - Name for the model (required)
 - `epochs` - Number of training epochs (default: 10)
 - `batch_size` - Training batch size (default: 12)
@@ -134,7 +134,7 @@ python agi2_train.py resources/my_experiment.toml
 
 **For a small model (faster training):**
 ```toml
-corpus_path = "data/small_corpus.txt"
+sources = ["data/small_corpus.txt"]
 model_name = "small_model"
 epochs = 5
 batch_size = 16
@@ -145,7 +145,7 @@ model_embd = 384
 
 **For a large model (better quality):**
 ```toml
-corpus_path = "data/large_corpus.txt"
+sources = ["data/large_corpus.txt"]
 model_name = "large_model"
 epochs = 20
 batch_size = 8
@@ -156,7 +156,7 @@ model_embd = 1024
 
 **For GPU training:**
 ```toml
-corpus_path = "data/corpus.txt"
+sources = ["data/corpus.txt"]
 model_name = "gpu_model"
 device = "cuda"
 batch_size = 32  # Larger batch size for GPU
@@ -262,7 +262,7 @@ You can resume training from where you left off by setting the `resume` paramete
 
 **Configuration file with resume (resources/resume_training.toml):**
 ```toml
-corpus_path = "data/my_corpus.txt"
+sources = ["data/my_corpus.txt"]
 model_name = "my_project"
 epochs = 5  # Continue for 5 more epochs
 resume = "trained/my_project.pt_epoch_10.pt"  # Resume from checkpoint

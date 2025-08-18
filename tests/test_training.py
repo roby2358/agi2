@@ -90,7 +90,7 @@ class TestTraining:
             train_model(
                 model=self.model,
                 tokenizer=self.tokenizer,
-                sources=corpus_path,
+                sources=[corpus_path],
                 epochs=1,
                 batch_size=1,
                 save_path="test_model",

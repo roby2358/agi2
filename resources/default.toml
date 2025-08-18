@@ -8,8 +8,7 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
-# Legacy support - kept for backward compatibility
-corpus_path = "samples/corpus.txt"
+
 model_name = "model"
 model_path = "trained/model.pt"
 
