@@ -135,6 +135,21 @@ Status: ToDo
 ID: ngram-tok-pei4
 Implement an n-gram encoding tokenizer
 ---
+Priority:   46
+Status: ToDo
+ID: quant-ptq-zaqs
+Implement post-training quantization (PTQ) for inference - convert FP32/FP16 to INT8/INT4 for 2-8x memory savings and faster computation on integer hardware. Add quantize_model method to model.py with torch.quantization.quantize_dynamic for Linear and LSTM layers.
+---
+Priority:   44
+Status: ToDo
+ID: quant-qat-gyx4
+Implement quantization-aware training (QAT) - add quantization layers during training with QuantStub/DeQuantStub in transformer blocks. This enables better accuracy by training with quantization in mind rather than applying it post-training.
+---
+Priority:   42
+Status: ToDo
+ID: quant-amp-ywnh
+Integrate mixed precision training with PyTorch AMP - use autocast and GradScaler for FP16 training to reduce memory usage and potentially speed up training while maintaining numerical stability.
+---
 Priority:   40
 Status: ToDo
 ID: ui-ugvz
