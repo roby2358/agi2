@@ -1,3 +1,7 @@
+Score:   85
+ID: weighted-wxsw
+Weighted training sources - implement source weighting in TOML config to control importance of different training data sources (e.g., corpus.txt gets 1.0 weight, corpus01.txt gets 0.8 weight)
+---
 Score:   20
 ID: context-viz-du28
 Add context window visualization/debugging to InteractivePrompt for better conversation flow understanding

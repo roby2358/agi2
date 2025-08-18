@@ -1,7 +1,14 @@
 # Moby Dick Training Configuration
 # Usage: python agi2_train.py resources/moby_dick.toml
 
-# Corpus and model paths
+# Training data sources - list of corpus files
+sources = [
+    "resources/training/corpus.txt",
+    "resources/training/corpus01.txt",
+    "resources/training/corpus20.txt"
+]
+
+# Legacy support - kept for backward compatibility
 corpus_path = "samples/moby_dick.txt"
 model_name = "moby_dick"
 model_path = "trained/moby_dick.pt"

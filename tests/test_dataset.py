@@ -17,7 +17,7 @@ class TestTextDataset:
             tokenizer.fit(["This is a test"])
             
             dataset = TextDataset(temp_file, tokenizer, seq_len=10)
-            assert dataset.corpus_path == temp_file
+            assert dataset.sources == [temp_file]
             assert dataset.tokenizer == tokenizer
             assert dataset.seq_len == 10
         finally:

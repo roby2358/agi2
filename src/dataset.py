@@ -15,7 +15,7 @@ class TextDataset(Dataset):
     Dataset class for text data loading and preprocessing.
     
     Args:
-        corpus_path: Path to the text corpus file
+        sources: List of paths to text corpus files, or single corpus path for backward compatibility
         tokenizer: Tokenizer to use for text processing
         seq_len: Length of sequences to generate
         overlap: Number of tokens to overlap between sequences
@@ -23,12 +23,17 @@ class TextDataset(Dataset):
     
     def __init__(
         self, 
-        corpus_path: str, 
+        sources: str | list[str], 
         tokenizer, 
         seq_len: int = 1024,
         overlap: int = 0
     ):
-        self.corpus_path = corpus_path
+        # Convert single path to list for consistent handling
+        if isinstance(sources, str):
+            self.sources = [sources]
+        else:
+            self.sources = sources
+            
         self.tokenizer = tokenizer
         self.seq_len = seq_len
         self.overlap = overlap
@@ -38,16 +43,24 @@ class TextDataset(Dataset):
         self.sequences = self._create_sequences()
     
     def _load_corpus(self) -> List[int]:
-        """Load and tokenize the text corpus."""
-        if not os.path.exists(self.corpus_path):
-            raise FileNotFoundError(f"Corpus file not found: {self.corpus_path}")
+        """Load and tokenize text from multiple sources."""
+        all_tokens = []
         
-        with open(self.corpus_path, 'r', encoding='utf-8') as f:
-            text = f.read()
+        for source_path in self.sources:
+            if not os.path.exists(source_path):
+                raise FileNotFoundError(f"Source file not found: {source_path}")
+            
+            print(f"Loading source: {source_path}")
+            with open(source_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            
+            # Tokenize the text from this source
+            source_tokens = self.tokenizer.encode(text)
+            all_tokens.extend(source_tokens)
+            print(f"  Loaded {len(source_tokens)} tokens from {source_path}")
         
-        # Tokenize the text
-        tokens = self.tokenizer.encode(text)
-        return tokens
+        print(f"Total tokens loaded: {len(all_tokens)}")
+        return all_tokens
     
     def _create_sequences(self) -> List[List[int]]:
         """Create training sequences from the tokenized corpus."""
@@ -93,5 +106,6 @@ class TextDataset(Dataset):
             'total_sequences': len(self.sequences),
             'sequence_length': self.seq_len,
             'vocab_size': self.get_vocab_size(),
-            'corpus_path': self.corpus_path
+            'sources': self.sources,
+            'num_sources': len(self.sources)
         }

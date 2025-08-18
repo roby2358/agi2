@@ -1,7 +1,14 @@
 # Default AGI2 Configuration
 # Usage: python agi2_train.py resources/default.toml
 
-# Corpus and model paths
+# Training data sources - list of corpus files
+sources = [
+    "resources/training/corpus.txt",
+    "resources/training/corpus01.txt",
+    "resources/training/corpus20.txt"
+]
+
+# Legacy support - kept for backward compatibility
 corpus_path = "samples/corpus.txt"
 model_name = "model"
 model_path = "trained/model.pt"

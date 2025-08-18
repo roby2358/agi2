@@ -5,11 +5,6 @@ build a synthetic training set in corpus.txt
 ---
 Priority:   75
 Status: ToDo
-ID: corpus01-fzfq
-Build corpus01.txt: Formal Logic & Mathematical Reasoning content
----
-Priority:   75
-Status: ToDo
 ID: corpus02-az57
 Build corpus02.txt: Critical Thinking & Fallacy Detection content
 ---
@@ -128,6 +123,16 @@ Priority:   40
 Status: ToDo
 ID: ui-ugvz
 Implement interactive prompted UI for text generation with real-time input/output
+---
+Priority:    0
+Status: Done
+ID: toml-sources-572x
+Model TOML supports a list of sources that the training script uses
+---
+Priority:    0
+Status: Done
+ID: corpus01-fzfq
+Build corpus01.txt: Formal Logic & Mathematical Reasoning content
 ---
 Priority:    0
 Status: Done

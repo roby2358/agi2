@@ -1,7 +1,14 @@
 # Small Model Configuration - Fast Training
 # Usage: python agi2_train.py resources/small_model.toml
 
-# Corpus and model paths
+# Training data sources - list of corpus files
+sources = [
+    "resources/training/corpus.txt",
+    "resources/training/corpus01.txt",
+    "resources/training/corpus20.txt"
+]
+
+# Legacy support - kept for backward compatibility
 corpus_path = "samples/corpus.txt"
 model_name = "small_model"
 model_path = "trained/small_model.pt"

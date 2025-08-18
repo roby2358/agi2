@@ -14,19 +14,12 @@ import argparse
 import logging
 import os
 
-from src.config_loader import get_training_config, get_config_value
+from src.config_loader import get_training_config, get_config_value, get_sources_list
 from src.cuda_utils import check_cuda_availability, get_optimal_device
 from src.config import AGI2Config
 from src.model import AGI2Model
 from src.tokenizer import BasicTokenizer
 from src.training import train_model
-
-
-
-
-
-
-
 
 def main():
     if len(sys.argv) < 2:
@@ -50,7 +43,7 @@ def main():
     cuda_status = check_cuda_availability(verbose=True)
     
     # Extract configuration values
-    corpus_path = get_config_value(config, 'corpus_path')
+    sources = get_sources_list(config)
     model_name = get_config_value(config, 'model_name')
     epochs = get_config_value(config, 'epochs', 10)
     batch_size = get_config_value(config, 'batch_size', 4)
@@ -59,10 +52,15 @@ def main():
     device_choice = get_config_value(config, 'device', 'auto')
     resume_path = get_config_value(config, 'resume', '')
     
-    # Validate corpus path
-    if not Path(corpus_path).exists():
-        print(f"Error: Corpus file not found: {corpus_path}")
-        sys.exit(1)
+    # Validate source paths
+    for source_path in sources:
+        if not Path(source_path).exists():
+            print(f"Error: Source file not found: {source_path}")
+            sys.exit(1)
+    
+    print(f"Training with {len(sources)} source(s):")
+    for source_path in sources:
+        print(f"  - {source_path}")
     
     # Determine device
     device = get_optimal_device(device_choice)
@@ -73,7 +71,7 @@ def main():
     
     # Load a sample of text to build vocabulary
     print("Building vocabulary from corpus...")
-    with open(corpus_path, 'r', encoding='utf-8') as f:
+    with open(sources[0], 'r', encoding='utf-8') as f: # Assuming the first source is the corpus for vocab building
         sample_text = f.read()[:50000]  # First 50k characters for vocab building
     
     tokenizer = BasicTokenizer()
@@ -117,7 +115,7 @@ def main():
         training_history = train_model(
             model=model,
             tokenizer=tokenizer,
-            corpus_path=corpus_path,
+            sources=sources, # Pass the list of sources
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,

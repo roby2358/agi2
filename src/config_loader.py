@@ -48,6 +48,34 @@ def get_config_value(config: Dict[str, Any], key: str, default: Any = None) -> A
     return config.get(key, default)
 
 
+def get_sources_list(config: Dict[str, Any]) -> list[str]:
+    """
+    Get the list of training data sources from configuration.
+    Supports both the new 'sources' list and legacy 'corpus_path'.
+    
+    Args:
+        config: Configuration dictionary
+        
+    Returns:
+        List of source file paths
+        
+    Raises:
+        ValueError: If neither sources nor corpus_path is found
+    """
+    # Check for new sources list first
+    if 'sources' in config and isinstance(config['sources'], list):
+        sources = config['sources']
+        if not sources:
+            raise ValueError("Sources list cannot be empty")
+        return sources
+    
+    # Fall back to legacy corpus_path
+    if 'corpus_path' in config:
+        return [config['corpus_path']]
+    
+    raise ValueError("Configuration must contain either 'sources' list or 'corpus_path'")
+
+
 def validate_required_config(config: Dict[str, Any], required_keys: list[str]) -> None:
     """
     Validate that required configuration keys exist.
@@ -76,8 +104,18 @@ def get_training_config(config_path: str) -> Dict[str, Any]:
     """
     config = load_config(config_path)
     
-    # Required keys for training
-    required_keys = ['corpus_path', 'model_name']
+    # Required keys for training - either sources or corpus_path
+    required_keys = ['model_name']
+    
+    # Check that we have either sources or corpus_path
+    if 'sources' not in config and 'corpus_path' not in config:
+        raise ValueError("Configuration must contain either 'sources' list or 'corpus_path'")
+    
+    # Validate sources if present
+    if 'sources' in config:
+        if not isinstance(config['sources'], list) or len(config['sources']) == 0:
+            raise ValueError("Sources must be a non-empty list")
+    
     validate_required_config(config, required_keys)
     
     return config

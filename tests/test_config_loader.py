@@ -123,7 +123,7 @@ class TestConfigLoader:
             temp_path = f.name
         
         try:
-            with pytest.raises(ValueError, match="Missing required configuration keys"):
+            with pytest.raises(ValueError, match="Configuration must contain either 'sources' list or 'corpus_path'"):
                 get_training_config(temp_path)
         finally:
             os.unlink(temp_path)

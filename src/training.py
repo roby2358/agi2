@@ -91,7 +91,7 @@ def train_epoch(
 def train_model(
     model,
     tokenizer,
-    corpus_path: str,
+    sources: str | list[str],
     epochs: int = 10,
     batch_size: int = 4,
     learning_rate: float = 1e-4,
@@ -107,7 +107,7 @@ def train_model(
     Args:
         model: The AGI2 model to train
         tokenizer: Tokenizer for text processing
-        corpus_path: Path to training corpus file
+        sources: Path to training corpus file(s) - can be single path or list of paths
         epochs: Number of training epochs
         batch_size: Training batch size
         learning_rate: Learning rate for optimizer
@@ -121,9 +121,7 @@ def train_model(
     model = model.to(device)
     
     # Create dataset and dataloader
-    
-    # Create dataset and dataloader
-    dataset = TextDataset(corpus_path, tokenizer, seq_len)
+    dataset = TextDataset(sources, tokenizer, seq_len)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # Initialize optimizer and loss function
