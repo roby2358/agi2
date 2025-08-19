@@ -25,6 +25,9 @@ class AGI2Model(nn.Module):
         super().__init__()
         self.config = config
         
+        # Cache for causal masks to avoid recreation
+        self._causal_mask_cache = {}
+        
         # Token and position embeddings
         self.token_embeddings = TokenEmbeddings(
             config.vocab_size, 
@@ -133,13 +136,30 @@ class AGI2Model(nn.Module):
         return logits
     
     def _create_causal_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        """Create causal mask for autoregressive generation."""
+        """Create causal mask for autoregressive generation with caching."""
+        # Create cache key
+        cache_key = (seq_len, device)
+        
+        # Return cached mask if available
+        if cache_key in self._causal_mask_cache:
+            return self._causal_mask_cache[cache_key]
+        
+        # Create new mask
         mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
-        return ~mask  # Invert so True means "attend to"
+        mask = ~mask  # Invert so True means "attend to"
+        
+        # Cache the mask
+        self._causal_mask_cache[cache_key] = mask
+        
+        return mask
     
     def get_num_params(self) -> int:
         """Get the total number of parameters in the model."""
         return sum(p.numel() for p in self.parameters())
+    
+    def clear_mask_cache(self):
+        """Clear the cached causal masks to free memory or when switching devices."""
+        self._causal_mask_cache.clear()
     
     def generate(
         self, 

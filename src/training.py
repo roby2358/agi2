@@ -26,7 +26,9 @@ def train_epoch(
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     device: torch.device,
-    clip_grad_norm: float = 1.0
+    clip_grad_norm: float = 1.0,
+    use_amp: bool = True,
+    log_gpu_memory: bool = False
 ) -> Dict[str, float]:
     """
     Train the model for one epoch.
@@ -38,6 +40,8 @@ def train_epoch(
         criterion: Loss function
         device: Device to train on
         clip_grad_norm: Gradient clipping norm value
+        use_amp: Whether to use automatic mixed precision
+        log_gpu_memory: Whether to log GPU memory usage
         
     Returns:
         Dictionary containing training metrics
@@ -46,43 +50,63 @@ def train_epoch(
     total_loss = 0.0
     num_batches = 0
     
+    # Initialize AMP scaler if using mixed precision
+    scaler = torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
+    
+    # Cache GPU memory info to avoid repeated queries
+    gpu_memory_info = ""
+    if log_gpu_memory and torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        reserved = torch.cuda.memory_reserved() / 1024**3   # GB
+        gpu_memory_info = f", GPU: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
+    
     for batch_idx, batch in enumerate(dataloader):
         # Move batch to device
-        batch = batch.to(device)
+        batch = batch.to(device, non_blocking=True)
         
         # Prepare input and target
         input_ids = batch[:, :-1]  # All tokens except last
         target_ids = batch[:, 1:]  # All tokens except first
         
-        # Forward pass
+        # Forward pass with AMP if enabled
         optimizer.zero_grad()
-        logits = model(input_ids)
         
-        # Calculate loss
-        loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
-        
-        # Backward pass
-        loss.backward()
-        
-        # Gradient clipping
-        if clip_grad_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
-        
-        # Update weights
-        optimizer.step()
+        if use_amp and scaler is not None:
+            with torch.cuda.amp.autocast():
+                logits = model(input_ids)
+                loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
+            
+            # Backward pass with AMP
+            scaler.scale(loss).backward()
+            
+            # Gradient clipping with AMP
+            if clip_grad_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
+            
+            # Update weights with AMP
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            # Standard training without AMP
+            logits = model(input_ids)
+            loss = criterion(logits.reshape(-1, logits.size(-1)), target_ids.reshape(-1))
+            
+            # Backward pass
+            loss.backward()
+            
+            # Gradient clipping
+            if clip_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
+            
+            # Update weights
+            optimizer.step()
         
         total_loss += loss.item()
         num_batches += 1
         
         # Print progress every 100 batches
         if (batch_idx + 1) % 100 == 0:
-            # Get GPU memory info if available
-            gpu_memory_info = ""
-            if torch.cuda.is_available():
-                allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-                reserved = torch.cuda.memory_reserved() / 1024**3   # GB
-                gpu_memory_info = f", GPU: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
-            
             print(f"Batch {batch_idx + 1}/{len(dataloader)}, Loss: {loss.item():.4f}{gpu_memory_info}")
     
     return total_loss / num_batches
@@ -99,7 +123,11 @@ def train_model(
     device: str = "auto",
     save_path: str = "model",
     start_epoch: int = 0,
-    resume_path: Optional[str] = None
+    resume_path: Optional[str] = None,
+    use_amp: bool = True,
+    log_gpu_memory: bool = False,
+    num_workers: int = 0,
+    pin_memory: bool = True
 ) -> None:
     """
     Train the AGI2 model on text data.
@@ -116,13 +144,24 @@ def train_model(
         save_path: Base path for saving checkpoints
         start_epoch: Starting epoch (for resume training)
         resume_path: Path to resume checkpoint (optional)
+        use_amp: Whether to use automatic mixed precision
+        log_gpu_memory: Whether to log GPU memory usage
+        num_workers: Number of worker processes for data loading
+        pin_memory: Whether to pin memory for faster GPU transfer
     """
     device = torch.device(device)
     model = model.to(device)
     
-    # Create dataset and dataloader
+    # Create dataset and dataloader with optimizations
     dataset = TextDataset(sources, tokenizer, seq_len)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=batch_size, 
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory and device.type == 'cuda',
+        persistent_workers=num_workers > 0
+    )
     
     # Initialize optimizer and loss function
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
@@ -144,6 +183,9 @@ def train_model(
     print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}")
     print(f"Learning rate: {learning_rate}")
+    print(f"Mixed Precision: {'Enabled' if use_amp else 'Disabled'}")
+    print(f"DataLoader workers: {num_workers}")
+    print(f"Pin memory: {pin_memory}")
     
     # Create trained directory if it doesn't exist
     if save_path:
@@ -156,19 +198,22 @@ def train_model(
         print(f"\nEpoch {epoch + 1}/{start_epoch + epochs}")
         print("-" * 50)
         
-        # Show GPU memory before training
-        if torch.cuda.is_available():
+        # Show GPU memory before training (only if logging is enabled)
+        if log_gpu_memory and torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU Memory before training: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
         
-        # Train for one epoch
-        avg_loss = train_epoch(model, dataloader, optimizer, criterion, device)
+        # Train for one epoch with optimizations
+        avg_loss = train_epoch(
+            model, dataloader, optimizer, criterion, device, 
+            use_amp=use_amp, log_gpu_memory=log_gpu_memory
+        )
         
         epoch_time = time.time() - start_time
         
-        # Show GPU memory after training
-        if torch.cuda.is_available():
+        # Show GPU memory after training (only if logging is enabled)
+        if log_gpu_memory and torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU Memory after training: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")

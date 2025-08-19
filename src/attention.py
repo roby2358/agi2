@@ -80,7 +80,9 @@ class MultiHeadAttention(nn.Module):
             # For causal mask, we need to expand it to match the attention scores shape
             if mask.dim() == 2:  # (seq_len, seq_len)
                 mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
-            scores = scores.masked_fill(mask == 0, -1e9)
+            # Use a smaller value that works with FP16 (half precision)
+            mask_value = -1e4 if scores.dtype == torch.float16 else -1e9
+            scores = scores.masked_fill(mask == 0, mask_value)
         
         # Apply softmax and dropout
         attention_weights = F.softmax(scores, dim=-1)
