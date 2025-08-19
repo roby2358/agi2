@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.model import AGI2Model
 from src.config import AGI2Config
-from src.tokenizer import BasicTokenizer
+from src.basic_tokenizer import BasicTokenizer
 from src.dataset import TextDataset
 from src.training import train_model
 from src.utils import save_checkpoint, load_checkpoint

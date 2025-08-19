@@ -3,7 +3,7 @@ import pytest
 import tempfile
 import os
 from src.dataset import TextDataset
-from src.tokenizer import BasicTokenizer
+from src.basic_tokenizer import BasicTokenizer
 
 class TestTextDataset:
     def test_initialization(self):

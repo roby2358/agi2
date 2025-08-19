@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from typing import List, Optional, Tuple
 import random
 
-from .tokenizer import BasicTokenizer
+from .basic_tokenizer import BasicTokenizer
 
 
 def generate_text(

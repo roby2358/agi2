@@ -16,7 +16,8 @@ from .transformer import TransformerBlock
 from .model import AGI2Model
 
 # Tokenization and data
-from .tokenizer import BasicTokenizer, BPETokenizer
+from .basic_tokenizer import BasicTokenizer
+from .bpe_tokenizer import BPETokenizer
 from .dataset import TextDataset
 
 # Training and generation

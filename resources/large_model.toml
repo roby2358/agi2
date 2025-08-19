@@ -4,7 +4,6 @@
 # Training data sources - list of corpus files
 sources = [
     "resources/training/corpus.txt",
-    "resources/training/corpus01.txt",
     "resources/training/corpus20.txt"
 ]
 

@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from src.model import AGI2Model
 from src.config import AGI2Config
-from src.tokenizer import BasicTokenizer
+from src.basic_tokenizer import BasicTokenizer
 from src.dataset import TextDataset
 from src.training import train_epoch, train_model
 

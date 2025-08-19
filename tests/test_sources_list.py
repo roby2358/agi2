@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from src.config_loader import get_sources_list
 from src.dataset import TextDataset
-from src.tokenizer import BasicTokenizer
+from src.basic_tokenizer import BasicTokenizer
 
 
 class TestSourcesList:

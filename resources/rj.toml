@@ -1,15 +1,15 @@
-# Small Model Configuration - Fast Training
-# Usage: python agi2_train.py resources/small_model.toml
+# Romeo & Juliet Model Configuration - Fast Training
+# Usage: python agi2_train.py resources/rj.toml
 
 # Training data sources - list of corpus files
 sources = [
-    "resources/training/corpus.txt",
+    "samples/romeo_juliette.txt",
     "resources/training/corpus20.txt"
 ]
 
 
-model_name = "small_model"
-model_path = "trained/small_model.pt"
+model_name = "rj"
+model_path = "trained/rj.pt"
 
 # Training parameters - optimized for speed
 epochs = 100
@@ -32,7 +32,9 @@ max_length = 300
 temperature = 0.8
 beam_size = 3
 model_seed = """
-This is a short, creative text generation model. It produces concise and imaginative responses.
+In Verona, where the bells toll for vespers and the marketplace bustles
+ with gossip and wine, entangled in a love so perilous it
+ could undo the very house that raised them.
 """
 
 # Interactive parameters

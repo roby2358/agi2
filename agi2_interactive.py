@@ -15,7 +15,7 @@ from src.config_loader import get_interactive_config, get_config_value
 from src.cuda_utils import check_cuda_availability, get_optimal_device
 from src.config import AGI2Config
 from src.model import AGI2Model
-from src.tokenizer import BasicTokenizer
+from src.basic_tokenizer import BasicTokenizer
 from src.generation import generate_interactive
 
 
