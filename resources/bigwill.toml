@@ -1,0 +1,44 @@
+# Big Will Model Configuration - Bigger Shakespeare
+# Usage: python agi2_train.py resources/bigwill.toml
+
+# Training data sources - list of corpus files
+sources = [
+    "samples/shakespeare_complete.txt",
+    "resources/training/corpus20.txt"
+]
+
+
+model_name = "bigwill"
+model_path = "trained/bigwill.pt"
+
+# Training parameters - optimized for stability (reduced from previous values)
+epochs = 100
+batch_size = 16
+learning_rate = 1e-4
+seq_len = 512
+
+# Model architecture - more balanced and stable
+model_positions = 512
+model_embd = 1536
+model_layer = 6
+model_head = 12
+model_activation = "gelu"
+model_dropout = 0.1
+
+# Device and resume options
+device = "auto"
+resume = ""
+
+# Generation parameters
+max_length = 300
+temperature = 0.8
+beam_size = 3
+model_seed = """
+Here lies the playwright who gave kings and fools the same immortal stage,
+ who bound the tempests of love, grief, and ambition into words that will
+ not die. Though his body rests in Stratford's earth, his language roams
+ forever, restless as the human heart itself.
+"""
+
+# Interactive parameters
+max_context_length = 512
