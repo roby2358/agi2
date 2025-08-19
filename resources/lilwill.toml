@@ -1,5 +1,5 @@
-# Romeo & Juliet Model Configuration - Fast Training
-# Usage: python agi2_train.py resources/rj.toml
+# lil Will Model Configuration - Tiny Shakespeare
+# Usage: python agi2_train.py resources/lilwill.toml
 
 # Training data sources - list of corpus files
 sources = [
@@ -7,9 +7,8 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
-
-model_name = "rj"
-model_path = "trained/rj.pt"
+model_name = "lilwill"
+model_path = "trained/lilwill.pt"
 
 # Training parameters - optimized for speed
 epochs = 100
@@ -34,9 +33,9 @@ max_length = 300
 temperature = 0.8
 beam_size = 3
 model_seed = """
-In Verona, where the bells toll for vespers and the marketplace bustles
- with gossip and wine, entangled in a love so perilous it
- could undo the very houses that raised them.
+Here lies the voice that taught us our own tongues. His words outlived
+ his breath, shaping grief and joy alike, and in their echo we are
+ never wholly without him.
 """
 
 # Interactive parameters
