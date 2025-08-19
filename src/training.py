@@ -187,6 +187,51 @@ def train_model(
     print(f"DataLoader workers: {num_workers}")
     print(f"Pin memory: {pin_memory}")
     
+    # GPU monitoring commands for reference
+    if torch.cuda.is_available():
+        print("\nGPU Memory Monitoring Commands:")
+        print("  nvidia-smi -l 1")
+        print("  nvidia-smi -l 1 --query-gpu=memory.used,memory.total,memory.free --format=csv")
+        
+        # Estimate GPU memory requirements
+        try:
+            from .utils import estimate_gpu_memory_requirements
+            
+            # Get model configuration from the model
+            config = model.config
+            memory_estimate = estimate_gpu_memory_requirements(
+                model_positions=config.get('max_positions', 512),
+                model_embd=config.get('n_embd', 384),
+                model_layer=config.get('n_layer', 6),
+                model_head=config.get('n_head', 6),
+                batch_size=batch_size,
+                seq_len=seq_len,
+                dtype_bytes=2 if use_amp else 4  # 2 for mixed precision, 4 for float32
+            )
+            
+            print(f"\nGPU Memory Requirements Estimate:")
+            print(f"  Model parameters: {memory_estimate['total_params_millions']}M")
+            print(f"  Estimated GPU memory: {memory_estimate['total_estimated_gb']:.2f} GB")
+            print(f"  Breakdown:")
+            print(f"    - Model weights: {memory_estimate['model_weights_gb']:.2f} GB")
+            print(f"    - Activations: {memory_estimate['activations_gb']:.2f} GB")
+            print(f"    - Optimizer state: {memory_estimate['optimizer_state_gb']:.2f} GB")
+            print(f"    - Gradients: {memory_estimate['gradients_gb']:.2f} GB")
+            print(f"    - IO tensors: {memory_estimate['io_tensors_gb']:.2f} GB")
+            
+            # Check if this might exceed common GPU memory limits
+            if memory_estimate['total_estimated_gb'] > 8:
+                print(f"  ⚠️  High memory usage - consider reducing batch_size or seq_len")
+            elif memory_estimate['total_estimated_gb'] > 4:
+                print(f"  ⚠️  Moderate memory usage - monitor GPU memory during training")
+            else:
+                print(f"  ✅ Memory usage looks reasonable")
+                
+        except ImportError:
+            print("  (Memory estimation not available)")
+        except Exception as e:
+            print(f"  (Memory estimation failed: {e})")
+    
     # Create trained directory if it doesn't exist
     if save_path:
         import os

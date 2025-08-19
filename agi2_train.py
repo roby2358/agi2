@@ -48,7 +48,7 @@ def main():
     epochs = get_config_value(config, 'epochs', 10)
     batch_size = get_config_value(config, 'batch_size', 4)
     learning_rate = get_config_value(config, 'learning_rate', 1e-4)
-    seq_len = get_config_value(config, 'seq_len', 512)
+    seq_len = get_config_value(config, 'seq_len', get_config_value(config, 'model_positions', 512))
     device_choice = get_config_value(config, 'device', 'auto')
     resume_path = get_config_value(config, 'resume', '')
     
@@ -84,7 +84,14 @@ def main():
     model_config = AGI2Config(
         vocab_size=actual_vocab_size,
         n_positions=seq_len,
-        n_ctx=seq_len
+        n_ctx=seq_len,
+        n_embd=get_config_value(config, 'model_embd', 768),
+        n_layer=get_config_value(config, 'model_layer', 12),
+        n_head=get_config_value(config, 'model_head', 12),
+        activation_function=get_config_value(config, 'model_activation', 'gelu'),
+        resid_pdrop=get_config_value(config, 'model_dropout', 0.1),
+        embd_pdrop=get_config_value(config, 'model_dropout', 0.1),
+        attn_pdrop=get_config_value(config, 'model_dropout', 0.1)
     )
     
     # Create model

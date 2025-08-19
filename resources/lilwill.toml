@@ -3,7 +3,7 @@
 
 # Training data sources - list of corpus files
 sources = [
-    "samples/romeo_juliette.txt",
+    "samples/shakespeare_complete.txt",
     "resources/training/corpus20.txt"
 ]
 
@@ -12,7 +12,7 @@ model_name = "rj"
 model_path = "trained/rj.pt"
 
 # Training parameters - optimized for speed
-epochs = 50
+epochs = 100
 batch_size = 24
 learning_rate = 5e-4
 seq_len = 512

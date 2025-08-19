@@ -240,6 +240,30 @@ The training module provides flexible training options. Here's how to train a mo
 python agi2_train.py resources/my_project.toml
 ```
 
+### GPU Memory Estimation
+
+Before training, you can estimate GPU memory requirements using the built-in tools:
+
+```bash
+# Estimate from TOML configuration file
+python estimate_memory.py resources/lilwill.toml
+
+# Estimate with custom parameters
+python estimate_memory.py --model-embd 768 --model-layer 12 --batch-size 8 --mixed-precision
+
+# Run examples to see different configurations
+python examples/memory_estimation_examples.py
+```
+
+The training script also automatically estimates memory requirements and displays them along with GPU monitoring commands.
+
+**Memory estimation includes:**
+- Model weights and parameters
+- Training activations
+- Optimizer state (AdamW momentum/variance)
+- Gradients and IO tensors
+- Mixed precision (FP16) savings
+
 ### Training Parameters
 
 - **epochs**: Number of complete passes through the training data

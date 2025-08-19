@@ -62,6 +62,86 @@ def get_model_size_mb(model: nn.Module) -> float:
     return size_mb
 
 
+def estimate_gpu_memory_requirements(
+    model_positions: int,
+    model_embd: int,
+    model_layer: int,
+    model_head: int,
+    batch_size: int,
+    seq_len: int,
+    vocab_size: int = 50257,
+    dtype_bytes: int = 4,
+    include_activations: bool = True,
+    include_optimizer: bool = True
+) -> Dict[str, float]:
+    """
+    Estimate GPU memory requirements for training a transformer model.
+    
+    Args:
+        model_positions: Maximum sequence length
+        model_embd: Embedding dimension
+        model_layer: Number of transformer layers
+        model_head: Number of attention heads
+        batch_size: Training batch size
+        seq_len: Training sequence length
+        vocab_size: Vocabulary size
+        dtype_bytes: Bytes per parameter (4 for float32, 2 for float16)
+        include_activations: Whether to include activation memory
+        include_optimizer: Whether to include optimizer state memory
+        
+    Returns:
+        Dictionary with memory estimates in GB
+    """
+    # Calculate model parameters
+    # Embeddings
+    token_embeddings = vocab_size * model_embd
+    position_embeddings = model_positions * model_embd
+    
+    # Transformer layers
+    # Self-attention: query, key, value projections + output projection
+    attention_params = model_layer * (4 * model_embd * model_embd)  # Q, K, V, O
+    # Feed-forward: two linear layers
+    ffn_params = model_layer * (2 * model_embd * (4 * model_embd))  # 4x expansion
+    # Layer norms
+    layer_norm_params = model_layer * (2 * model_embd)  # 2 per layer
+    
+    total_params = token_embeddings + position_embeddings + attention_params + ffn_params + layer_norm_params
+    
+    # Model weights memory (parameters)
+    model_memory_gb = (total_params * dtype_bytes) / (1024**3)
+    
+    # Activations memory (forward pass)
+    activation_memory_gb = 0
+    if include_activations:
+        # Key activations: embeddings, attention outputs, ffn outputs
+        # This is a rough estimate - actual usage depends on implementation
+        activation_memory_gb = (batch_size * seq_len * model_embd * model_layer * 3) / (1024**3)
+    
+    # Optimizer state memory (AdamW uses 2x parameters for momentum and variance)
+    optimizer_memory_gb = 0
+    if include_optimizer:
+        optimizer_memory_gb = (total_params * 2 * dtype_bytes) / (1024**3)
+    
+    # Gradient memory
+    gradient_memory_gb = (total_params * dtype_bytes) / (1024**3)
+    
+    # Input/output tensors memory
+    io_memory_gb = (batch_size * seq_len * model_embd * 2) / (1024**3)  # Rough estimate
+    
+    # Total memory
+    total_memory_gb = model_memory_gb + activation_memory_gb + optimizer_memory_gb + gradient_memory_gb + io_memory_gb
+    
+    return {
+        'model_weights_gb': round(model_memory_gb, 2),
+        'activations_gb': round(activation_memory_gb, 2),
+        'optimizer_state_gb': round(optimizer_memory_gb, 2),
+        'gradients_gb': round(gradient_memory_gb, 2),
+        'io_tensors_gb': round(io_memory_gb, 2),
+        'total_estimated_gb': round(total_memory_gb, 2),
+        'total_params_millions': round(total_params / 1e6, 2)
+    }
+
+
 def create_causal_mask(seq_len: int, device: Optional[torch.device] = None) -> torch.Tensor:
     """
     Create a causal mask for autoregressive generation.
