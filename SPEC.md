@@ -179,19 +179,22 @@ resources/
 
 ### 6. GPT-2 Model (model-aaaa)
 **MUST:**
-- Implement `GPT2Model(config: GPT2Config)` class
-- Support `forward(input_ids: torch.Tensor, attention_mask=None)` method
-- Return logits of shape `(batch_size, seq_len, vocab_size)`
+- Implement `AGI2Model(config: AGI2Config)` class
+- Support `forward(input_ids: torch.Tensor, attention_mask=None, return_hidden_states=False)` method
+- When `return_hidden_states=False`: return logits of shape `(batch_size, seq_len, vocab_size)`
+- When `return_hidden_states=True`: return hidden states of shape `(batch_size, seq_len, n_embd)` after final layer norm, before output projection
 - Support configurable number of layers
+- Expose token embedding weights via `self.token_embeddings.embedding.weight` for similarity computation
 
 **SHOULD:**
 - Support gradient checkpointing for memory efficiency
 - Allow partial forward passes for generation
 
 **Testing Requirements:**
-- Test model output shapes
+- Test model output shapes (both logits and hidden states modes)
 - Test layer count configuration
 - Test attention mask handling
+- Test hidden states shape matches (batch_size, seq_len, n_embd)
 
 ### 7. Basic Tokenization (tokenizer-aaac)
 **MUST:**
@@ -229,46 +232,77 @@ resources/
 
 ### 9. Data Loading Pipeline (data-nkyd)
 **MUST:**
-- Implement `TextDataset(sources: str | list[str], tokenizer, seq_len: int)` class
+- Implement `TextDataset(sources: str | list[str], tokenizer, seq_len: int, stage: int = 1)` class
 - Support `__len__()` and `__getitem__(idx)` methods
-- Return tokenized sequences of specified length
+- Support curriculum stages:
+  - Stage 1: Return (prompt, single next token) pairs
+  - Stage 2: Return (prompt, 2-5 token continuation) pairs
+  - Stage 3: Return (prompt, full response) pairs (current behavior)
+- Return dict with `prompt_ids` and `target_ids` tensors
 - Handle file reading and text preprocessing
 
 **SHOULD:**
 - Support multiple file formats
 - Implement data shuffling
 - Support custom text preprocessing
+- Support stage transitions without re-tokenizing corpus
 
 **Testing Requirements:**
 - Test dataset loading
 - Test sequence length handling
 - Test data iteration
+- Test curriculum stage 1 (single token targets)
+- Test curriculum stage 2 (short continuation targets)
+- Test curriculum stage 3 (full response targets)
 
-### 10. Training Loop (training-zyhg)
+### 10. Pairwise Cosine Similarity Loss (cosine-loss)
 **MUST:**
-- Implement `train_epoch(model, dataloader, optimizer, criterion, device, clip_grad_norm)` function
-- Support forward pass, loss calculation, and backpropagation
-- Return training loss for the epoch
+- Implement `PairwiseCosineLoss(geometric_ratio, anchor_ratio, embedding_ratio)` class
+- Compute geometric pairs: `(sim(H_i, H_j) - sim(E_i, E_j))²` where H are hidden states and E are target embeddings
+- Compute anchor pairs: `(sim(H_i, E_k) - sim(E_i, E_k))²` where E_k is a sampled vocabulary embedding
+- Compute embedding pairs using raw embeddings forwarded through the model
+- Weight losses by configurable ratios (default 50/30/20)
+- Exclude degenerate observations (zero-norm vectors) to avoid NaN
+
+**SHOULD:**
+- Reuse forward pass activations across pairs within a mini-batch
+- Monitor embedding space isotropy during training
+
+**Testing Requirements:**
+- Test geometric pairs preserve known similarities
+- Test anchor pairs compute correctly
+- Test embedding pairs compute correctly
+- Test pair sampling
+- Test aggregation (exponential decay, arithmetic mean)
+
+### 11. Training Loop (training-zyhg)
+**MUST:**
+- Implement `train_epoch(model, dataloader, optimizer, loss_fn, device, clip_grad_norm)` function
+- Get hidden states from model via `return_hidden_states=True`
+- For multi-token observations: aggregate hidden states per observation (exponential decay for stage 2, arithmetic mean for stage 3)
+- Aggregate target embeddings with matching weights
+- Compute three pair types per batch (geometric, anchor, embedding)
 - Handle gradient clipping
+- Support AMP (automatic mixed precision)
 - Support GPU memory monitoring
 
 **SHOULD:**
 - Support learning rate scheduling
-- Implement early stopping
-- Log training metrics
+- Log training metrics including pairwise accuracy
 
 **Testing Requirements:**
-- Test complete training iteration
-- Test loss calculation
+- Test complete training iteration with cosine loss
+- Test hidden state aggregation
 - Test gradient updates
 
-### 11. Training Function (train-aaab)
+### 12. Training Function (train-aaab)
 **MUST:**
 - Implement `train_model(model, tokenizer, sources, epochs, **kwargs)` function
-- Handle model training from start to finish
-- Save checkpoints periodically
+- Handle model training from start to finish using pairwise cosine similarity loss
+- Save checkpoints periodically (including curriculum stage)
 - Return training history
-- Support training resumption from checkpoints
+- Support training resumption from checkpoints (restoring curriculum stage)
+- Manage curriculum stage transitions: advance when pairwise accuracy plateaus
 
 **SHOULD:**
 - Support validation during training
@@ -277,10 +311,11 @@ resources/
 
 **Testing Requirements:**
 - Test complete training workflow
-- Test checkpoint saving/loading
+- Test checkpoint saving/loading with curriculum stage
 - Test training resumption
+- Test curriculum stage advancement
 
-### 12. Text Generation (generate-h7a3)
+### 13. Text Generation (generate-h7a3)
 **MUST:**
 - Implement `generate_text(model, prompt, max_length, temperature, top_k, top_p, tokenizer, device)` function
 - Support autoregressive text generation
@@ -298,7 +333,7 @@ resources/
 - Test temperature effects
 - Test stopping conditions
 
-### 13. Interactive Prompt System (interactive-prompt)
+### 14. Interactive Prompt System (interactive-prompt)
 **MUST:**
 - Implement `InteractivePrompt(model, max_context_length, tokenizer)` class
 - Support `send_message(text: str) -> str` method for user input
@@ -313,7 +348,7 @@ resources/
 - Test context length limits and truncation
 - Test context clearing and reset functionality
 
-### 14. Configuration Management (config-loader)
+### 15. Configuration Management (config-loader)
 **MUST:**
 - Implement TOML configuration file loading
 - Support validation of required configuration parameters
@@ -329,7 +364,7 @@ resources/
 - Test parameter validation
 - Test default value handling
 
-### 15. CUDA Utilities (cuda-utils)
+### 16. CUDA Utilities (cuda-utils)
 **MUST:**
 - Implement CUDA availability checking
 - Support automatic device selection
@@ -393,6 +428,7 @@ resources/
 **MUST:**
 - Support all training parameters (sources, model_name, epochs, batch_size, learning_rate, seq_len)
 - Support model architecture parameters (model_positions, model_embd, model_layer, model_head)
+- Support cosine similarity training parameters (geometric_ratio, anchor_ratio, embedding_ratio, curriculum_stage, stage_patience, position_decay)
 - Support device and resume options
 - Support generation parameters (max_length, temperature, beam_size, model_seed)
 - Support interactive parameters (max_context_length)

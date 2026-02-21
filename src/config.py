@@ -5,16 +5,17 @@ This module provides the AGI2Config class for managing model architecture parame
 """
 
 from typing import Optional
+
 import torch
 
 
 class AGI2Config:
     """
     Configuration class for AGI2 model architecture.
-    
+
     Defaults to AGI2 Small configuration (12 layers, 12 heads, 768 dimensions).
     """
-    
+
     def __init__(
         self,
         vocab_size: int = 50257,
@@ -54,7 +55,7 @@ class AGI2Config:
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
         self.tie_word_embeddings = tie_word_embeddings
-    
+
     @classmethod
     def from_preset(cls, preset: str) -> "AGI2Config":
         """Create configuration from preset (Small, Medium, Large)."""
@@ -64,8 +65,10 @@ class AGI2Config:
             "large": cls(n_layer=36, n_head=20, n_embd=1280),
         }
         if preset not in presets:
-            raise ValueError(f"Unknown preset: {preset}. Available: {list(presets.keys())}")
+            raise ValueError(
+                f"Unknown preset: {preset}. Available: {list(presets.keys())}"
+            )
         return presets[preset]
-    
+
     def __repr__(self) -> str:
         return f"AGI2Config(n_layer={self.n_layer}, n_head={self.n_head}, n_embd={self.n_embd})"

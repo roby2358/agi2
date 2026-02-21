@@ -24,6 +24,14 @@ model_embd = 768
 model_layer = 12
 model_head = 12
 
+# Cosine similarity training parameters
+geometric_ratio = 0.5
+anchor_ratio = 0.3
+embedding_ratio = 0.2
+curriculum_stage = 1
+stage_patience = 5
+position_decay = 0.5
+
 # Device and resume options
 device = "auto"  # "cpu", "cuda", or "auto"
 resume = null  # Path to checkpoint file to resume from, or null

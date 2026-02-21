@@ -51,6 +51,14 @@ def main():
     seq_len = get_config_value(config, 'seq_len', get_config_value(config, 'model_positions', 512))
     device_choice = get_config_value(config, 'device', 'auto')
     resume_path = get_config_value(config, 'resume', '')
+
+    # Cosine similarity training parameters
+    geometric_ratio = get_config_value(config, 'geometric_ratio', 0.5)
+    anchor_ratio = get_config_value(config, 'anchor_ratio', 0.3)
+    embedding_ratio = get_config_value(config, 'embedding_ratio', 0.2)
+    curriculum_stage = get_config_value(config, 'curriculum_stage', 1)
+    stage_patience = get_config_value(config, 'stage_patience', 5)
+    position_decay = get_config_value(config, 'position_decay', 0.5)
     
     # Validate source paths
     for source_path in sources:
@@ -91,7 +99,7 @@ def main():
         activation_function=get_config_value(config, 'model_activation', 'gelu'),
         resid_pdrop=get_config_value(config, 'model_dropout', 0.1),
         embd_pdrop=get_config_value(config, 'model_dropout', 0.1),
-        attn_pdrop=get_config_value(config, 'model_dropout', 0.1)
+        attn_pdrop=get_config_value(config, 'model_dropout', 0.1),
     )
     
     # Create model
@@ -103,16 +111,21 @@ def main():
     if resume_path and Path(resume_path).exists():
         print(f"Loading checkpoint from {resume_path}...")
         checkpoint = torch.load(resume_path, map_location=device)
-        
+
         # Load model state
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Loaded model state from epoch {checkpoint['epoch']}")
-        
+
         # Load tokenizer if it exists in checkpoint
         if 'tokenizer' in checkpoint:
             tokenizer = checkpoint['tokenizer']
             print("Loaded tokenizer from checkpoint")
-        
+
+        # Restore curriculum stage if saved
+        if 'curriculum_stage' in checkpoint:
+            curriculum_stage = checkpoint['curriculum_stage']
+            print(f"Restored curriculum stage: {curriculum_stage}")
+
         # Calculate starting epoch
         start_epoch = checkpoint['epoch']
         print(f"Resuming training from epoch {start_epoch + 1}")
@@ -122,14 +135,24 @@ def main():
         training_history = train_model(
             model=model,
             tokenizer=tokenizer,
-            sources=sources, # Pass the list of sources
+            sources=sources,
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,
             seq_len=seq_len,
             device=device,
             save_path=f"trained/{model_name}",
-            start_epoch=start_epoch
+            start_epoch=start_epoch,
+            use_amp=get_config_value(config, 'use_amp', False),
+            log_gpu_memory=get_config_value(config, 'log_gpu_memory', False),
+            num_workers=get_config_value(config, 'num_workers', 0),
+            pin_memory=get_config_value(config, 'pin_memory', True),
+            geometric_ratio=geometric_ratio,
+            anchor_ratio=anchor_ratio,
+            embedding_ratio=embedding_ratio,
+            curriculum_stage=curriculum_stage,
+            stage_patience=stage_patience,
+            position_decay=position_decay,
         )
         
         print(f"Training completed successfully!")
