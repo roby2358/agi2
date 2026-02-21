@@ -2,10 +2,11 @@
 Multi-Head Attention
 
 This module provides the MultiHeadAttention class for the AGI2 model.
+Uses PyTorch's scaled_dot_product_attention for automatic flash attention
+on compatible hardware.
 """
 
-import math
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ import torch.nn.functional as F
 
 class MultiHeadAttention(nn.Module):
     """
-    Multi-head self-attention mechanism.
+    Multi-head self-attention using F.scaled_dot_product_attention.
 
     Args:
         d_model: Dimension of the model
@@ -37,8 +38,6 @@ class MultiHeadAttention(nn.Module):
         self.w_v = nn.Linear(d_model, d_model)
         self.w_o = nn.Linear(d_model, d_model)
 
-        self.dropout_layer = nn.Dropout(dropout)
-
         # Initialize weights
         nn.init.normal_(self.w_q.weight, mean=0.0, std=0.02)
         nn.init.normal_(self.w_k.weight, mean=0.0, std=0.02)
@@ -59,7 +58,8 @@ class MultiHeadAttention(nn.Module):
             query: Query tensor of shape (batch_size, seq_len, d_model)
             key: Key tensor of shape (batch_size, seq_len, d_model)
             value: Value tensor of shape (batch_size, seq_len, d_model)
-            mask: Optional attention mask
+            mask: Optional boolean attention mask where True = attend.
+                  Shape (1, 1, seq_len, seq_len) or (seq_len, seq_len).
 
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
@@ -67,6 +67,7 @@ class MultiHeadAttention(nn.Module):
         batch_size, seq_len, _ = query.size()
 
         # Linear projections and reshape for multi-head attention
+        # Shape: (batch, n_heads, seq_len, d_k)
         Q = (
             self.w_q(query)
             .view(batch_size, seq_len, self.n_heads, self.d_k)
@@ -83,26 +84,25 @@ class MultiHeadAttention(nn.Module):
             .transpose(1, 2)
         )
 
-        # Scaled dot-product attention
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+        # Use SDPA — automatically selects flash attention on compatible hardware.
+        # Only apply dropout during training.
+        drop_p = self.dropout if self.training else 0.0
 
-        # Apply mask if provided
         if mask is not None:
-            # Ensure mask is on the same device and properly shaped
             mask = mask.to(query.device)
-            # For causal mask, we need to expand it to match the attention scores shape
-            if mask.dim() == 2:  # (seq_len, seq_len)
-                mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
-            # Use a smaller value that works with FP16 (half precision)
-            mask_value = -1e4 if scores.dtype == torch.float16 else -1e9
-            scores = scores.masked_fill(mask == 0, mask_value)
-
-        # Apply softmax and dropout
-        attention_weights = F.softmax(scores, dim=-1)
-        attention_weights = self.dropout_layer(attention_weights)
-
-        # Apply attention to values
-        context = torch.matmul(attention_weights, V)
+            if mask.dim() == 2:
+                mask = mask.unsqueeze(0).unsqueeze(0)
+            # SDPA boolean masks: True = masked out. Our masks: True = attend.
+            # Convert to float: 0 where attend, -inf where masked.
+            float_mask = torch.zeros_like(mask, dtype=Q.dtype)
+            float_mask.masked_fill_(~mask, float("-inf"))
+            context = F.scaled_dot_product_attention(
+                Q, K, V, attn_mask=float_mask, dropout_p=drop_p
+            )
+        else:
+            context = F.scaled_dot_product_attention(
+                Q, K, V, is_causal=True, dropout_p=drop_p
+            )
 
         # Reshape and apply output projection
         context = (
@@ -125,4 +125,4 @@ class MultiHeadAttention(nn.Module):
         mask = torch.triu(
             torch.ones(seq_len, seq_len, device=device), diagonal=1
         ).bool()
-        return ~mask  # Invert so True means "attend to"
+        return ~mask

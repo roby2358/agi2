@@ -51,7 +51,7 @@ def generate_text(
     # Generate tokens
     generated_ids = input_ids.clone()
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(max_length):
             # Get model predictions
             outputs = model(generated_ids)
@@ -133,7 +133,7 @@ def generate_with_beam_search(
     # Initialize beams
     beams = [(input_ids.clone(), 0.0)]  # (sequence, score)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(max_length):
             new_beams = []
 

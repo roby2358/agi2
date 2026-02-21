@@ -23,7 +23,7 @@ uv sync
 ### Train a model
 
 ```bash
-python agi2_train.py resources/small_model.toml
+uv run python agi2_train.py resources/small_model.toml
 ```
 
 This reads the TOML config, builds a tokenizer from the corpus, creates the model, and trains it. Checkpoints are saved every 5 epochs to `trained/`, and the final model is saved at the end.
@@ -31,25 +31,25 @@ This reads the TOML config, builds a tokenizer from the corpus, creates the mode
 ### Generate text
 
 ```bash
-python agi2_generate.py resources/small_model.toml "Once upon a time"
+uv run python agi2_generate.py resources/small_model.toml "Once upon a time"
 ```
 
 ### Beam search generation
 
 ```bash
-python agi2_generate_beam.py resources/small_model.toml "The ship sailed"
+uv run python agi2_generate_beam.py resources/small_model.toml "The ship sailed"
 ```
 
 ### Interactive mode
 
 ```bash
-python agi2_interactive.py resources/small_model.toml
+uv run python agi2_interactive.py resources/small_model.toml
 ```
 
 ### Estimate GPU memory
 
 ```bash
-python estimate_memory.py resources/small_model.toml
+uv run python estimate_memory.py resources/small_model.toml
 ```
 
 ## Configuration

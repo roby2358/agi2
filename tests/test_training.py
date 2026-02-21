@@ -87,7 +87,7 @@ class TestTraining:
             "stage",
             "position_decay",
             "clip_grad_norm",
-            "use_amp",
+            "scaler",
             "log_gpu_memory",
         ]
         for param in expected_params:

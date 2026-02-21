@@ -1,23 +1,21 @@
 # Romeo & Juliet Model Configuration - Fast Training
-# Usage: python agi2_train.py resources/rj.toml
+# Usage: uv run python agi2_train.py resources/rj.toml
 
-# Training data sources - list of corpus files
 sources = [
     "samples/romeo_juliette.txt",
     "resources/training/corpus20.txt"
 ]
 
-
 model_name = "rj"
 model_path = "trained/rj.pt"
 
-# Training parameters - optimized for speed
+# Training
 epochs = 50
 batch_size = 24
 learning_rate = 5e-4
 seq_len = 512
 
-# Model architecture - smaller for faster training
+# Model architecture
 model_positions = 512
 model_embd = 384
 model_layer = 6
@@ -25,11 +23,23 @@ model_head = 6
 model_activation = "gelu"
 model_dropout = 0.1
 
-# Device and resume options
+# Cosine similarity training
+geometric_ratio = 0.5
+anchor_ratio = 0.3
+embedding_ratio = 0.2
+curriculum_stage = 1
+stage_patience = 5
+position_decay = 0.5
+
+# Performance
+use_compile = false
+use_amp = false
+
+# Device and resume
 device = "auto"
 resume = ""
 
-# Generation parameters
+# Generation
 max_length = 300
 temperature = 0.8
 beam_size = 3
@@ -39,5 +49,4 @@ In Verona, where the bells toll for vespers and the marketplace bustles
  could undo the very houses that raised them.
 """
 
-# Interactive parameters
 max_context_length = 512

@@ -151,7 +151,7 @@ def train_epoch(
     stage: int,
     position_decay: float,
     clip_grad_norm: float,
-    use_amp: bool,
+    scaler: torch.cuda.amp.GradScaler | None,
     log_gpu_memory: bool,
 ) -> Dict[str, float]:
     """
@@ -163,10 +163,6 @@ def train_epoch(
     total_loss = 0.0
     total_metrics: Dict[str, float] = {}
     num_batches = 0
-
-    scaler = (
-        torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
-    )
 
     for batch_idx, batch in enumerate(dataloader):
         prompt_ids = batch["prompt_ids"].to(device, non_blocking=True)
@@ -285,6 +281,9 @@ def train_model(
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, embedding_ratio)
+    scaler = (
+        torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
+    )
 
     history: Dict[str, Any] = {
         "train_loss": [],
@@ -308,7 +307,7 @@ def train_model(
         f"Loss ratios: geometric={geometric_ratio}, "
         f"anchor={anchor_ratio}, embedding={embedding_ratio}"
     )
-    print(f"Mixed Precision: {'Enabled' if use_amp else 'Disabled'}")
+    print(f"Mixed Precision: {'Enabled' if scaler is not None else 'Disabled'}")
 
     if save_path:
         os.makedirs("trained", exist_ok=True)
@@ -327,7 +326,7 @@ def train_model(
             current_stage,
             position_decay,
             1.0,
-            use_amp,
+            scaler,
             log_gpu_memory,
         )
 
@@ -345,7 +344,12 @@ def train_model(
             if k != "avg_loss":
                 print(f"  {k}: {v:.4f}")
 
-        # Curriculum stage advancement
+        # Early stop: loss collapsed to zero
+        if avg_loss < 1e-8:
+            print(f"\nEarly stop: loss collapsed to {avg_loss:.2e}")
+            break
+
+        # Curriculum stage advancement / early stop on plateau
         if avg_loss < best_loss:
             best_loss = avg_loss
             patience_counter = 0
@@ -365,6 +369,12 @@ def train_model(
                 pin_memory,
                 device_obj.type == "cuda",
             )
+
+        if patience_counter >= stage_patience and current_stage == 3:
+            print(
+                f"\nEarly stop: loss plateaued for {stage_patience} epochs at stage 3"
+            )
+            break
 
         # Checkpoint every 5 epochs
         if save_path and (epoch + 1) % 5 == 0:

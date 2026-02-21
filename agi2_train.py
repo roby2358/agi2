@@ -130,6 +130,13 @@ def main():
         start_epoch = checkpoint['epoch']
         print(f"Resuming training from epoch {start_epoch + 1}")
     
+    # Compile model if requested (requires PyTorch 2.0+)
+    use_compile = get_config_value(config, 'use_compile', False)
+    if use_compile:
+        print("Compiling model with torch.compile()...")
+        model = torch.compile(model)
+        print("Model compiled successfully")
+
     # Train the model
     try:
         training_history = train_model(

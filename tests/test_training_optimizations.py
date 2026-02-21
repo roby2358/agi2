@@ -127,27 +127,24 @@ class TestTrainingOptimizations:
         mock_optimizer = MagicMock()
         loss_fn = PairwiseCosineLoss(0.5, 0.3, 0.2)
 
-        with patch("torch.cuda.amp.GradScaler") as mock_scaler_class:
-            mock_scaler = MagicMock()
-            mock_scaler_class.return_value = mock_scaler
+        mock_scaler = MagicMock()
 
-            result = train_epoch(
-                model,
-                mock_dataloader,
-                mock_optimizer,
-                loss_fn,
-                device,
-                1,
-                0.5,
-                1.0,
-                True,
-                False,
-            )
+        result = train_epoch(
+            model,
+            mock_dataloader,
+            mock_optimizer,
+            loss_fn,
+            device,
+            1,
+            0.5,
+            1.0,
+            mock_scaler,
+            False,
+        )
 
-            mock_scaler_class.assert_called_once()
-            mock_scaler.scale.assert_called()
-            mock_scaler.step.assert_called()
-            mock_scaler.update.assert_called()
+        mock_scaler.scale.assert_called()
+        mock_scaler.step.assert_called()
+        mock_scaler.update.assert_called()
 
     def test_non_blocking_transfer(self, model):
         """Test that data transfer uses non_blocking=True."""
@@ -193,7 +190,7 @@ class TestTrainingOptimizations:
             1,
             0.5,
             1.0,
-            False,
+            None,
             False,
         )
 
