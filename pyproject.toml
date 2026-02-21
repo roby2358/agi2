@@ -30,66 +30,20 @@ classifiers = [
 ]
 
 dependencies = [
-    # Core ML dependencies
     "torch>=2.0.0",
-    
-    # Data processing
     "numpy>=1.21.0",
-    
-    # Configuration and utilities
     "pyyaml>=6.0",
     "tqdm>=4.64.0",
     "rich>=12.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    # Testing
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-xdist>=3.0.0",
     "pytest-mock>=3.10.0",
-    
-    # Code quality
     "black>=23.0.0",
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
-    "pre-commit>=3.0.0",
-    
-    # Documentation
-    "sphinx>=6.0.0",
-    "sphinx-rtd-theme>=1.2.0",
-    "myst-parser>=1.0.0",
-    
-    # Jupyter support
-    "jupyter>=1.0.0",
-    "notebook>=6.5.0",
-    "ipykernel>=6.0.0",
-    "ipywidgets>=8.0.0",
 ]
-
-# Optional dependency groups - uncomment as needed
-# distributed = [
-#     "deepspeed>=0.9.0",
-#     "fairscale>=0.4.13",
-# ]
-
-# vision = [
-#     "pillow>=9.0.0",
-#     "opencv-python>=4.7.0",
-#     "torchvision>=0.15.0",
-# ]
-
-# audio = [
-#     "librosa>=0.10.0",
-#     "soundfile>=0.12.0",
-#     "torchaudio>=2.0.0",
-# ]
-
-# all = [
-#     "agi2[dev,distributed,vision,audio]"
-# ]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/agi2"

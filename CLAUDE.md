@@ -10,7 +10,7 @@ AGI2 is a complete GPT-2 implementation in PyTorch for training custom language 
 
 ### Setup
 ```bash
-uv sync --extra=dev          # Install all dependencies (recommended)
+uv sync                      # Install all dependencies
 ```
 
 ### Running
