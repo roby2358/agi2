@@ -1,7 +1,6 @@
 # Moby Dick Training Configuration
-# Usage: python agi2_train.py resources/moby_dick.toml
+# Usage: uv run python agi2_train.py resources/moby_dick.toml
 
-# Training data sources - list of corpus files
 sources = [
     "samples/moby_dick_pg2701.txt",
     "resources/training/corpus20.txt"
@@ -10,27 +9,39 @@ sources = [
 model_name = "moby_dick"
 model_path = "trained/moby_dick.pt"
 
-# Training parameters
+# Training
 epochs = 100
 batch_size = 12
 learning_rate = 3e-4
 seq_len = 1024
 
-# Model architecture (optional, uses defaults if not specified)
+# Model architecture
 model_positions = 1024
 model_embd = 768
 model_layer = 12
 model_head = 12
+model_activation = "gelu"
+model_dropout = 0.1
 
-# Device and resume options
+# Cosine similarity training
+geometric_ratio = 0.5
+anchor_ratio = 0.3
+embedding_ratio = 0.2
+curriculum_stage = 1
+stage_patience = 5
+position_decay = 0.5
+
+# Performance
+use_compile = false
+use_amp = false
+
+# Device and resume
 device = "auto"
-# resume = ""  # Path to checkpoint file to resume from (leave empty to start fresh)
 
-# Generation parameters (for generate scripts)
+# Generation
 max_length = 300
 temperature = 0.8
 beam_size = 5
 model_seed = "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world."
 
-# Interactive parameters
 max_context_length = 1024
