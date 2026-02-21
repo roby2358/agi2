@@ -1,3 +1,8 @@
+Priority:   87
+Status: ToDo
+ID: primer-39nj
+jack jane primer task, 3000 word vocabularly, 1 megabyte
+---
 Priority:   85
 Status: ToDo
 ID: script-merge-gfst
