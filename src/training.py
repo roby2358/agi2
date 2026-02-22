@@ -236,6 +236,7 @@ def train_model(
     pin_memory: bool,
     geometric_ratio: float,
     anchor_ratio: float,
+    sigmoid_scale: float,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
@@ -256,7 +257,7 @@ def train_model(
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio)
+    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale)
     scaler = (
         torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
     )

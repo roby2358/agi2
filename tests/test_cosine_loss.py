@@ -10,7 +10,7 @@ class TestPairwiseCosineLoss:
     """Test cases for PairwiseCosineLoss."""
 
     def setup_method(self) -> None:
-        self.loss_fn = PairwiseCosineLoss(0.7, 0.3)
+        self.loss_fn = PairwiseCosineLoss(0.7, 0.3, 10.0)
         self.n_embd = 32
         self.vocab_size = 100
         self.batch_size = 8
@@ -81,8 +81,8 @@ class TestPairwiseCosineLoss:
         target_embs = torch.randn(self.batch_size, self.n_embd)
         emb_weight = torch.randn(self.vocab_size, self.n_embd)
 
-        loss1_fn = PairwiseCosineLoss(0.9, 0.1)
-        loss2_fn = PairwiseCosineLoss(0.1, 0.9)
+        loss1_fn = PairwiseCosineLoss(0.9, 0.1, 10.0)
+        loss2_fn = PairwiseCosineLoss(0.1, 0.9, 10.0)
 
         torch.manual_seed(0)
         l1, _ = loss1_fn(hidden, target_embs, emb_weight)
@@ -108,3 +108,32 @@ class TestPairwiseCosineLoss:
 
         loss, metrics = self.loss_fn(hidden, target_embs, emb_weight)
         assert metrics["valid_observations"] == 1
+
+    def test_sigmoid_amplifies_midrange(self) -> None:
+        """Sigmoid loss should be larger than squared loss for mid-range gaps."""
+        gap = torch.tensor(0.15)
+        squared = (gap**2).item()
+        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5) ** 2
+        assert sigmoid_loss.item() > squared * 3  # at least 3x amplification
+
+    def test_sigmoid_free_pass_at_zero(self) -> None:
+        """Sigmoid loss should be zero when gap is zero."""
+        gap = torch.tensor(0.0)
+        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5) ** 2
+        assert sigmoid_loss.item() < 1e-10
+
+    def test_sigmoid_scale_increases_amplification(self) -> None:
+        """Higher sigmoid_scale should produce larger loss for same gap."""
+        hidden = torch.randn(self.batch_size, self.n_embd)
+        target_embs = torch.randn(self.batch_size, self.n_embd)
+        emb_weight = torch.randn(self.vocab_size, self.n_embd)
+
+        low_scale = PairwiseCosineLoss(0.7, 0.3, 5.0)
+        high_scale = PairwiseCosineLoss(0.7, 0.3, 20.0)
+
+        torch.manual_seed(42)
+        l_low, _ = low_scale(hidden, target_embs, emb_weight)
+        torch.manual_seed(42)
+        l_high, _ = high_scale(hidden, target_embs, emb_weight)
+
+        assert l_high.item() > l_low.item()

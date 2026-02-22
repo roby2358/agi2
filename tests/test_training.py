@@ -63,6 +63,7 @@ class TestTraining:
             pin_memory=False,
             geometric_ratio=0.7,
             anchor_ratio=0.3,
+            sigmoid_scale=10.0,
         )
         defaults.update(overrides)
         return train_model(**defaults)

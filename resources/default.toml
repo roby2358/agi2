@@ -28,6 +28,7 @@ model_dropout = 0.1
 # Cosine similarity training
 geometric_ratio = 0.7
 anchor_ratio = 0.3
+sigmoid_scale = 10.0
 
 # Performance
 use_compile = false  # torch.compile() for fused kernels

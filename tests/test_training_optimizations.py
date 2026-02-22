@@ -110,7 +110,7 @@ class TestTrainingOptimizations:
         )
 
         mock_optimizer = MagicMock()
-        loss_fn = PairwiseCosineLoss(0.7, 0.3)
+        loss_fn = PairwiseCosineLoss(0.7, 0.3, 10.0)
         mock_scaler = MagicMock()
 
         result = train_epoch(
@@ -160,7 +160,7 @@ class TestTrainingOptimizations:
         )
 
         mock_optimizer = MagicMock()
-        loss_fn = PairwiseCosineLoss(0.7, 0.3)
+        loss_fn = PairwiseCosineLoss(0.7, 0.3, 10.0)
 
         train_epoch(
             model,

@@ -6,7 +6,11 @@ a frozen embedding codebook. Two loss terms:
 - Geometric: hidden states should preserve embedding similarity
 - Anchor: hidden states should stay aligned to the embedding space
 
-Loss: (sim(X', Y') - sim(X, Y))²
+Loss: (sigmoid(gap * scale) - 0.5)²
+where gap = sim(X', Y') - sim(X, Y)
+
+The sigmoid amplifies the gradient signal in the practical range (gaps of
+0.05-0.30) while preserving a free pass near zero and saturating at extremes.
 """
 
 from typing import Tuple
@@ -18,9 +22,11 @@ import torch.nn.functional as F
 
 class PairwiseCosineLoss(nn.Module):
     """
-    Pairwise cosine similarity loss with two pair types:
-    - Geometric: (sim(H_i, H_j) - sim(E_i, E_j))²  (0.7)
-    - Anchor: (sim(H_i, E_k) - sim(E_i, E_k))²  (0.3)
+    Pairwise cosine similarity loss with sigmoid amplification.
+
+    Two pair types:
+    - Geometric: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, H_j) - sim(E_i, E_j)
+    - Anchor: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, E_k) - sim(E_i, E_k)
 
     Hidden states and target embeddings are single vectors (the last
     hidden state from the transformer), not aggregated sequences.
@@ -30,10 +36,21 @@ class PairwiseCosineLoss(nn.Module):
         self,
         geometric_ratio: float,
         anchor_ratio: float,
+        sigmoid_scale: float,
     ):
         super().__init__()
         self.geometric_ratio = geometric_ratio
         self.anchor_ratio = anchor_ratio
+        self.sigmoid_scale = sigmoid_scale
+
+    def _sigmoid_loss(self, gap: torch.Tensor) -> torch.Tensor:
+        """Compute sigmoid-amplified squared loss from a similarity gap.
+
+        Maps gap through sigmoid(gap * scale), then squares the deviation
+        from 0.5. This amplifies the mid-range gradient signal (4-6x for
+        gaps of 0.05-0.15) while preserving a free pass at zero.
+        """
+        return (torch.sigmoid(gap * self.sigmoid_scale) - 0.5) ** 2
 
     def _sample_pairs(
         self, batch_size: int, num_pairs: int, device: torch.device
@@ -59,7 +76,7 @@ class PairwiseCosineLoss(nn.Module):
 
         sim_h = F.cosine_similarity(h[idx_i], h[idx_j], dim=-1)
         sim_e = F.cosine_similarity(e[idx_i], e[idx_j], dim=-1)
-        return ((sim_h - sim_e) ** 2).mean()
+        return self._sigmoid_loss(sim_h - sim_e).mean()
 
     def _anchor_loss(
         self,
@@ -79,7 +96,7 @@ class PairwiseCosineLoss(nn.Module):
 
         sim_h_ek = F.cosine_similarity(h[obs_idx], e_k, dim=-1)
         sim_e_ek = F.cosine_similarity(e[obs_idx], e_k, dim=-1)
-        return ((sim_h_ek - sim_e_ek) ** 2).mean()
+        return self._sigmoid_loss(sim_h_ek - sim_e_ek).mean()
 
     def forward(
         self,
@@ -91,8 +108,8 @@ class PairwiseCosineLoss(nn.Module):
         Compute pairwise cosine similarity loss.
 
         Args:
-            hidden_states: Aggregated model outputs (batch_size, n_embd)
-            target_embeddings: Aggregated known-good embeddings (batch_size, n_embd)
+            hidden_states: Last hidden states from model (batch_size, n_embd)
+            target_embeddings: Frozen codebook embeddings (batch_size, n_embd)
             embedding_weight: Frozen vocab embedding matrix (vocab_size, n_embd)
 
         Returns:
