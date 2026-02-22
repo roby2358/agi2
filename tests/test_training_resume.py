@@ -25,7 +25,8 @@ _TRAIN_DEFAULTS = dict(
     pin_memory=False,
     geometric_ratio=0.7,
     anchor_ratio=0.3,
-    sigmoid_scale=10.0,
+    sigmoid_scale_start=3.0,
+    sigmoid_scale_end=10.0,
 )
 
 

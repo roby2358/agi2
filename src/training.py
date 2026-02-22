@@ -236,10 +236,14 @@ def train_model(
     pin_memory: bool,
     geometric_ratio: float,
     anchor_ratio: float,
-    sigmoid_scale: float,
+    sigmoid_scale_start: float,
+    sigmoid_scale_end: float,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
+
+    Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
+    over the training run, gradually tightening tolerances as the model improves.
 
     Returns training history dict with keys:
     train_loss, epoch_times, metrics.
@@ -257,7 +261,7 @@ def train_model(
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale)
+    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
     scaler = (
         torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
     )
@@ -280,14 +284,24 @@ def train_model(
     print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}, LR: {learning_rate}")
     print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
+    print(
+        f"Sigmoid scale: {sigmoid_scale_start} -> {sigmoid_scale_end} over {epochs} epochs"
+    )
     print(f"Mixed Precision: {'Enabled' if scaler is not None else 'Disabled'}")
 
     if save_path:
         os.makedirs("trained", exist_ok=True)
 
     for epoch in range(start_epoch, start_epoch + epochs):
+        # Ramp sigmoid scale linearly
+        progress = epoch / max(start_epoch + epochs - 1, 1)
+        current_scale = (
+            sigmoid_scale_start + (sigmoid_scale_end - sigmoid_scale_start) * progress
+        )
+        loss_fn.sigmoid_scale = current_scale
+
         start_time = time.time()
-        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs}")
+        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs} (scale={current_scale:.2f})")
         print("-" * 50)
 
         epoch_metrics = train_epoch(

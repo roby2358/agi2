@@ -59,7 +59,8 @@ def main():
     # Cosine similarity training parameters
     geometric_ratio = get_config_value(config, "geometric_ratio", 0.7)
     anchor_ratio = get_config_value(config, "anchor_ratio", 0.3)
-    sigmoid_scale = get_config_value(config, "sigmoid_scale", 10.0)
+    sigmoid_scale_start = get_config_value(config, "sigmoid_scale_start", 3.0)
+    sigmoid_scale_end = get_config_value(config, "sigmoid_scale_end", 10.0)
 
     # Validate source paths
     for source_path in sources:
@@ -163,7 +164,8 @@ def main():
             pin_memory=get_config_value(config, "pin_memory", True),
             geometric_ratio=geometric_ratio,
             anchor_ratio=anchor_ratio,
-            sigmoid_scale=sigmoid_scale,
+            sigmoid_scale_start=sigmoid_scale_start,
+            sigmoid_scale_end=sigmoid_scale_end,
         )
 
         print(f"Training completed successfully!")
