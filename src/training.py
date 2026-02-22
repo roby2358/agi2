@@ -69,7 +69,7 @@ def _compute_batch_loss(
     last_target_pos = prompt_len + target_len - 1
     h = hidden_states[:, last_target_pos, :]
 
-    # Last target embedding from the frozen codebook
+    # Last target embedding from the codebook
     embedding_weight = model.token_embeddings.embedding.weight
     last_target_token = target_ids[:, -1]
     e = embedding_weight[last_target_token]
@@ -272,6 +272,8 @@ def train_model(
     patience_counter = 0
     prev_seq_len = seq_len_start
 
+    training_start_time = time.time()
+
     if start_epoch > 0:
         print(f"Resuming training from epoch {start_epoch + 1}")
 
@@ -389,8 +391,13 @@ def train_model(
             is_final=True,
         )
 
+    total_elapsed = time.time() - training_start_time
+    minutes, seconds = divmod(int(total_elapsed), 60)
+    hours, minutes = divmod(minutes, 60)
+
     print("\nTraining completed!")
     print(f"Final loss: {history['train_loss'][-1]:.4f}")
+    print(f"Total time: {hours}h {minutes}m {seconds}s")
     return history
 
 

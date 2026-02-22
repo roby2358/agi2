@@ -29,11 +29,10 @@ class AGI2Model(nn.Module):
         # Cache for causal masks to avoid recreation
         self._causal_mask_cache = {}
 
-        # Token and position embeddings (frozen — static random codebook)
+        # Token and position embeddings (trainable)
         self.token_embeddings = TokenEmbeddings(
             config.vocab_size, config.n_embd, config.embd_pdrop
         )
-        self.token_embeddings.embedding.weight.requires_grad_(False)
         self.position_embeddings = PositionEmbeddings(config.n_positions, config.n_embd)
 
         # Dropout for embeddings

@@ -2,7 +2,7 @@
 Pairwise Cosine Similarity Loss
 
 Trains language models using geometric relationship preservation against
-a frozen embedding codebook. Two loss terms:
+the embedding codebook. Two loss terms:
 - Geometric: hidden states should preserve embedding similarity
 - Anchor: hidden states should stay aligned to the embedding space
 
