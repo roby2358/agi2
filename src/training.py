@@ -365,8 +365,8 @@ def train_model(
             print(f"\nEarly stop: loss plateaued for {early_stop_patience} epochs")
             break
 
-        # Checkpoint every 5 epochs
-        if save_path and (epoch + 1) % 5 == 0:
+        # Checkpoint every epoch (overwrite previous to save disk)
+        if save_path:
             _save_checkpoint(
                 model,
                 optimizer,
@@ -412,7 +412,7 @@ def _save_checkpoint(
     if is_final:
         path = f"trained/{model_name}.pt"
     else:
-        path = f"trained/{model_name}.pt_epoch_{epoch}.pt"
+        path = f"trained/{model_name}_checkpoint.pt"
 
     torch.save(
         {

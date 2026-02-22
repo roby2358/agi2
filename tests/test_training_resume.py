@@ -94,7 +94,7 @@ class TestTrainingResume:
                 )
 
                 model_name = os.path.basename(save_path).replace(".pt", "")
-                checkpoint_path = f"trained/{model_name}.pt_epoch_5.pt"
+                checkpoint_path = f"trained/{model_name}_checkpoint.pt"
                 assert os.path.exists(checkpoint_path), "Checkpoint should be created"
 
                 checkpoint = torch.load(
