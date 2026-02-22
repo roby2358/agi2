@@ -2,6 +2,8 @@
 Training Functions
 
 Training loop for the AGI2 model using pairwise cosine similarity loss.
+Only the last hidden vector is compared — we don't care how it got there,
+just where it landed.
 """
 
 import logging
@@ -15,7 +17,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from .cosine_loss import PairwiseCosineLoss, aggregate_hidden_states
+from .cosine_loss import PairwiseCosineLoss
 from .dataset import TextDataset
 
 logger = logging.getLogger(__name__)
@@ -53,33 +55,26 @@ def _compute_batch_loss(
     prompt_ids: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
-    stage: int,
-    position_decay: float,
 ) -> tuple:
-    """Compute the pairwise cosine similarity loss for a single batch."""
+    """Compute pairwise cosine similarity loss for a single batch.
+
+    Uses only the last hidden vector — the final position of the target
+    sequence after running through the transformer.
+    """
     _, hidden_states = model.forward_hidden(full_input)
 
+    # Last hidden vector of the target region
     prompt_len = prompt_ids.size(1)
     target_len = target_ids.size(1)
-    target_hidden = hidden_states[:, prompt_len : prompt_len + target_len, :]
+    last_target_pos = prompt_len + target_len - 1
+    h = hidden_states[:, last_target_pos, :]
 
-    agg_hidden = aggregate_hidden_states(target_hidden, stage, position_decay)
-
+    # Last target embedding from the frozen codebook
     embedding_weight = model.token_embeddings.embedding.weight
-    target_embs = embedding_weight[target_ids]
-    agg_target_embs = aggregate_hidden_states(target_embs, stage, position_decay)
+    last_target_token = target_ids[:, -1]
+    e = embedding_weight[last_target_token]
 
-    # Forward random vocab tokens for embedding pairs
-    num_emb_samples = max(2, full_input.size(0))
-    vocab_size = embedding_weight.size(0)
-    emb_sample_ids = torch.randint(
-        0, vocab_size, (num_emb_samples,), device=full_input.device
-    )
-    emb_input = emb_sample_ids.unsqueeze(1)
-    _, emb_hidden = model.forward_hidden(emb_input)
-    emb_hidden_flat = emb_hidden.squeeze(1)
-
-    return loss_fn(agg_hidden, agg_target_embs, embedding_weight, emb_hidden_flat)
+    return loss_fn(h, e, embedding_weight)
 
 
 def _step_with_amp(
@@ -90,8 +85,6 @@ def _step_with_amp(
     prompt_ids: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
-    stage: int,
-    position_decay: float,
     clip_grad_norm: float,
 ) -> tuple:
     """Forward + backward with AMP."""
@@ -102,8 +95,6 @@ def _step_with_amp(
             prompt_ids,
             target_ids,
             loss_fn,
-            stage,
-            position_decay,
         )
     scaler.scale(loss).backward()
     if clip_grad_norm > 0:
@@ -121,8 +112,6 @@ def _step_standard(
     prompt_ids: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
-    stage: int,
-    position_decay: float,
     clip_grad_norm: float,
 ) -> tuple:
     """Forward + backward without AMP."""
@@ -132,8 +121,6 @@ def _step_standard(
         prompt_ids,
         target_ids,
         loss_fn,
-        stage,
-        position_decay,
     )
     loss.backward()
     if clip_grad_norm > 0:
@@ -148,8 +135,6 @@ def train_epoch(
     optimizer: optim.Optimizer,
     loss_fn: PairwiseCosineLoss,
     device: torch.device,
-    stage: int,
-    position_decay: float,
     clip_grad_norm: float,
     scaler: torch.cuda.amp.GradScaler | None,
     log_gpu_memory: bool,
@@ -180,8 +165,6 @@ def train_epoch(
                 prompt_ids,
                 target_ids,
                 loss_fn,
-                stage,
-                position_decay,
                 clip_grad_norm,
             )
         else:
@@ -192,8 +175,6 @@ def train_epoch(
                 prompt_ids,
                 target_ids,
                 loss_fn,
-                stage,
-                position_decay,
                 clip_grad_norm,
             )
 
@@ -255,22 +236,17 @@ def train_model(
     pin_memory: bool,
     geometric_ratio: float,
     anchor_ratio: float,
-    embedding_ratio: float,
-    curriculum_stage: int,
-    stage_patience: int,
-    position_decay: float,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
 
     Returns training history dict with keys:
-    train_loss, epoch_times, stages, metrics.
+    train_loss, epoch_times, metrics.
     """
     device_obj = torch.device(device)
     model = model.to(device_obj)
-    current_stage = curriculum_stage
 
-    dataset = TextDataset(sources, tokenizer, seq_len, current_stage)
+    dataset = TextDataset(sources, tokenizer, seq_len)
     dataloader = _build_dataloader(
         dataset,
         batch_size,
@@ -280,7 +256,7 @@ def train_model(
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, embedding_ratio)
+    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio)
     scaler = (
         torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
     )
@@ -288,12 +264,12 @@ def train_model(
     history: Dict[str, Any] = {
         "train_loss": [],
         "epoch_times": [],
-        "stages": [],
         "metrics": [],
     }
 
     best_loss = float("inf")
     patience_counter = 0
+    early_stop_patience = 10
 
     if start_epoch > 0:
         print(f"Resuming training from epoch {start_epoch + 1}")
@@ -302,11 +278,7 @@ def train_model(
     print(f"Model parameters: {model.get_num_params():,}")
     print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}, LR: {learning_rate}")
-    print(f"Curriculum stage: {current_stage}")
-    print(
-        f"Loss ratios: geometric={geometric_ratio}, "
-        f"anchor={anchor_ratio}, embedding={embedding_ratio}"
-    )
+    print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
     print(f"Mixed Precision: {'Enabled' if scaler is not None else 'Disabled'}")
 
     if save_path:
@@ -314,7 +286,7 @@ def train_model(
 
     for epoch in range(start_epoch, start_epoch + epochs):
         start_time = time.time()
-        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs} " f"(Stage {current_stage})")
+        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs}")
         print("-" * 50)
 
         epoch_metrics = train_epoch(
@@ -323,8 +295,6 @@ def train_model(
             optimizer,
             loss_fn,
             device_obj,
-            current_stage,
-            position_decay,
             1.0,
             scaler,
             log_gpu_memory,
@@ -335,7 +305,6 @@ def train_model(
 
         history["train_loss"].append(avg_loss)
         history["epoch_times"].append(epoch_time)
-        history["stages"].append(current_stage)
         history["metrics"].append(epoch_metrics)
 
         print(f"Epoch {epoch + 1} completed in {epoch_time:.2f}s")
@@ -349,31 +318,15 @@ def train_model(
             print(f"\nEarly stop: loss collapsed to {avg_loss:.2e}")
             break
 
-        # Curriculum stage advancement / early stop on plateau
+        # Early stop: loss plateaued
         if avg_loss < best_loss:
             best_loss = avg_loss
             patience_counter = 0
         else:
             patience_counter += 1
 
-        if patience_counter >= stage_patience and current_stage < 3:
-            current_stage += 1
-            patience_counter = 0
-            best_loss = float("inf")
-            print(f"\nAdvancing to curriculum stage {current_stage}")
-            dataset.set_stage(current_stage)
-            dataloader = _build_dataloader(
-                dataset,
-                batch_size,
-                num_workers,
-                pin_memory,
-                device_obj.type == "cuda",
-            )
-
-        if patience_counter >= stage_patience and current_stage == 3:
-            print(
-                f"\nEarly stop: loss plateaued for {stage_patience} epochs at stage 3"
-            )
+        if patience_counter >= early_stop_patience:
+            print(f"\nEarly stop: loss plateaued for {early_stop_patience} epochs")
             break
 
         # Checkpoint every 5 epochs
@@ -384,7 +337,6 @@ def train_model(
                 tokenizer,
                 avg_loss,
                 epoch + 1,
-                current_stage,
                 save_path,
                 is_final=False,
             )
@@ -397,7 +349,6 @@ def train_model(
             tokenizer,
             history["train_loss"][-1],
             start_epoch + epochs,
-            current_stage,
             save_path,
             is_final=True,
         )
@@ -413,7 +364,6 @@ def _save_checkpoint(
     tokenizer: object,
     loss: float,
     epoch: int,
-    curriculum_stage: int,
     save_path: str,
     is_final: bool,
 ) -> None:
@@ -436,7 +386,6 @@ def _save_checkpoint(
             "loss": loss,
             "config": model.config,
             "tokenizer": tokenizer,
-            "curriculum_stage": curriculum_stage,
         },
         path,
     )

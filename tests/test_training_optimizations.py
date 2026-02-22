@@ -46,19 +46,12 @@ class TestTrainingOptimizations:
         device = torch.device("cpu")
         seq_len = 128
 
-        # First call should create and cache the mask
         mask1 = model._create_causal_mask(seq_len, device)
         assert (seq_len, device) in model._causal_mask_cache
 
-        # Second call should return cached mask
         mask2 = model._create_causal_mask(seq_len, device)
         assert torch.equal(mask1, mask2)
 
-        # Verify cache key format
-        cache_key = (seq_len, device)
-        assert cache_key in model._causal_mask_cache
-
-        # Test different sequence lengths create different masks
         mask3 = model._create_causal_mask(256, device)
         assert not torch.equal(mask1, mask3)
         assert (256, device) in model._causal_mask_cache
@@ -66,15 +59,11 @@ class TestTrainingOptimizations:
     def test_causal_mask_cache_clearing(self, model):
         """Test that the mask cache can be cleared."""
         device = torch.device("cpu")
-        seq_len = 128
 
-        # Create some cached masks
-        model._create_causal_mask(seq_len, device)
+        model._create_causal_mask(128, device)
         model._create_causal_mask(256, device)
-
         assert len(model._causal_mask_cache) == 2
 
-        # Clear cache
         model.clear_mask_cache()
         assert len(model._causal_mask_cache) == 0
 
@@ -85,16 +74,13 @@ class TestTrainingOptimizations:
             cuda_device = torch.device("cuda:0")
             seq_len = 128
 
-            # Create masks on different devices
             cpu_mask = model._create_causal_mask(seq_len, cpu_device)
             cuda_mask = model._create_causal_mask(seq_len, cuda_device)
 
-            # Should have separate cache entries
             assert (seq_len, cpu_device) in model._causal_mask_cache
             assert (seq_len, cuda_device) in model._causal_mask_cache
             assert len(model._causal_mask_cache) == 2
 
-            # Masks should be on different devices
             assert cpu_mask.device == cpu_device
             assert cuda_mask.device == cuda_device
 
@@ -106,7 +92,6 @@ class TestTrainingOptimizations:
         device = torch.device("cuda")
         model = model.to(device)
 
-        # Create dict-based batches matching new API
         mock_dataloader = MagicMock()
         mock_dataloader.__len__ = MagicMock(return_value=2)
         mock_dataloader.__iter__ = MagicMock(
@@ -125,8 +110,7 @@ class TestTrainingOptimizations:
         )
 
         mock_optimizer = MagicMock()
-        loss_fn = PairwiseCosineLoss(0.5, 0.3, 0.2)
-
+        loss_fn = PairwiseCosineLoss(0.7, 0.3)
         mock_scaler = MagicMock()
 
         result = train_epoch(
@@ -135,8 +119,6 @@ class TestTrainingOptimizations:
             mock_optimizer,
             loss_fn,
             device,
-            1,
-            0.5,
             1.0,
             mock_scaler,
             False,
@@ -151,7 +133,6 @@ class TestTrainingOptimizations:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model.to(device)
 
-        # Create tensors that track non_blocking
         prompt_ids = torch.randint(0, 1000, (2, 64))
         target_ids = torch.randint(0, 1000, (2, 1))
 
@@ -179,7 +160,7 @@ class TestTrainingOptimizations:
         )
 
         mock_optimizer = MagicMock()
-        loss_fn = PairwiseCosineLoss(0.5, 0.3, 0.2)
+        loss_fn = PairwiseCosineLoss(0.7, 0.3)
 
         train_epoch(
             model,
@@ -187,8 +168,6 @@ class TestTrainingOptimizations:
             mock_optimizer,
             loss_fn,
             device,
-            1,
-            0.5,
             1.0,
             None,
             False,
@@ -206,48 +185,39 @@ class TestTrainingOptimizations:
         device = torch.device("cuda")
         model = model.to(device)
 
-        # Test with GPU memory logging disabled
         with (
             patch("torch.cuda.memory_allocated") as mock_allocated,
             patch("torch.cuda.memory_reserved") as mock_reserved,
         ):
-
-            # Ensure the mocks return valid values
             mock_allocated.return_value = 0
             mock_reserved.return_value = 0
 
-            # Test the GPU memory logging logic directly
             gpu_memory_info = ""
             if False:  # log_gpu_memory=False
-                allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-                reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
                 gpu_memory_info = (
                     f", GPU: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
                 )
 
-            # Should not query GPU memory
             mock_allocated.assert_not_called()
             mock_reserved.assert_not_called()
 
-        # Test with GPU memory logging enabled
         with (
             patch("torch.cuda.memory_allocated") as mock_allocated,
             patch("torch.cuda.memory_reserved") as mock_reserved,
         ):
+            mock_allocated.return_value = 1024**3
+            mock_reserved.return_value = 2 * 1024**3
 
-            mock_allocated.return_value = 1024**3  # 1GB
-            mock_reserved.return_value = 2 * 1024**3  # 2GB
-
-            # Test the GPU memory logging logic directly
             gpu_memory_info = ""
             if True:  # log_gpu_memory=True
-                allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-                reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
                 gpu_memory_info = (
                     f", GPU: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
                 )
 
-            # Should query GPU memory
             mock_allocated.assert_called()
             mock_reserved.assert_called()
 

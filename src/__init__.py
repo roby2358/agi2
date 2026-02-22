@@ -15,7 +15,7 @@ from .bpe_tokenizer import BPETokenizer
 from .config import AGI2Config
 
 # Training and generation
-from .cosine_loss import PairwiseCosineLoss, aggregate_hidden_states
+from .cosine_loss import PairwiseCosineLoss
 from .dataset import TextDataset
 
 # Model components
@@ -47,7 +47,6 @@ __all__ = [
     "TextDataset",
     # Training and generation
     "PairwiseCosineLoss",
-    "aggregate_hidden_states",
     "train_epoch",
     "train_model",
     "generate_text",

@@ -1,9 +1,10 @@
 """
 Pairwise Cosine Similarity Loss
 
-Trains language models using geometric relationship preservation.
-The loss measures how well the model's output vectors preserve the geometric
-relationships defined by the embedding matrix.
+Trains language models using geometric relationship preservation against
+a frozen embedding codebook. Two loss terms:
+- Geometric: hidden states should preserve embedding similarity
+- Anchor: hidden states should stay aligned to the embedding space
 
 Loss: (sim(X', Y') - sim(X, Y))²
 """
@@ -17,22 +18,22 @@ import torch.nn.functional as F
 
 class PairwiseCosineLoss(nn.Module):
     """
-    Pairwise cosine similarity loss with three pair types:
-    - Geometric: (sim(H_i, H_j) - sim(E_i, E_j))²
-    - Anchor: (sim(H_i, E_k) - sim(E_i, E_k))²
-    - Embedding: (sim(E_i', E_j') - sim(E_i, E_j))²
+    Pairwise cosine similarity loss with two pair types:
+    - Geometric: (sim(H_i, H_j) - sim(E_i, E_j))²  (0.7)
+    - Anchor: (sim(H_i, E_k) - sim(E_i, E_k))²  (0.3)
+
+    Hidden states and target embeddings are single vectors (the last
+    hidden state from the transformer), not aggregated sequences.
     """
 
     def __init__(
         self,
         geometric_ratio: float,
         anchor_ratio: float,
-        embedding_ratio: float,
     ):
         super().__init__()
         self.geometric_ratio = geometric_ratio
         self.anchor_ratio = anchor_ratio
-        self.embedding_ratio = embedding_ratio
 
     def _sample_pairs(
         self, batch_size: int, num_pairs: int, device: torch.device
@@ -80,36 +81,11 @@ class PairwiseCosineLoss(nn.Module):
         sim_e_ek = F.cosine_similarity(e[obs_idx], e_k, dim=-1)
         return ((sim_h_ek - sim_e_ek) ** 2).mean()
 
-    def _embedding_loss(
-        self,
-        embedding_hidden_states: torch.Tensor,
-        embedding_weight: torch.Tensor,
-        device: torch.device,
-    ) -> torch.Tensor:
-        """Compute embedding pair loss from pre-computed hidden states."""
-        num_emb = embedding_hidden_states.size(0) // 2
-        if num_emb == 0:
-            return torch.tensor(0.0, device=device)
-
-        emb_h_i = embedding_hidden_states[:num_emb]
-        emb_h_j = embedding_hidden_states[num_emb : 2 * num_emb]
-
-        vocab_size = embedding_weight.size(0)
-        emb_idx_i = torch.randint(0, vocab_size, (num_emb,), device=device)
-        emb_idx_j = torch.randint(0, vocab_size, (num_emb,), device=device)
-
-        sim_h = F.cosine_similarity(emb_h_i, emb_h_j, dim=-1)
-        sim_e = F.cosine_similarity(
-            embedding_weight[emb_idx_i], embedding_weight[emb_idx_j], dim=-1
-        )
-        return ((sim_h - sim_e) ** 2).mean()
-
     def forward(
         self,
         hidden_states: torch.Tensor,
         target_embeddings: torch.Tensor,
         embedding_weight: torch.Tensor,
-        embedding_hidden_states: torch.Tensor,
     ) -> Tuple[torch.Tensor, dict[str, float]]:
         """
         Compute pairwise cosine similarity loss.
@@ -117,9 +93,7 @@ class PairwiseCosineLoss(nn.Module):
         Args:
             hidden_states: Aggregated model outputs (batch_size, n_embd)
             target_embeddings: Aggregated known-good embeddings (batch_size, n_embd)
-            embedding_weight: Full vocab embedding matrix (vocab_size, n_embd)
-            embedding_hidden_states: Hidden states from forwarding random
-                vocab tokens through model (num_samples, n_embd)
+            embedding_weight: Frozen vocab embedding matrix (vocab_size, n_embd)
 
         Returns:
             Tuple of (total_loss, metrics_dict)
@@ -137,7 +111,6 @@ class PairwiseCosineLoss(nn.Module):
             return zero, {
                 "geometric_loss": 0.0,
                 "anchor_loss": 0.0,
-                "embedding_loss": 0.0,
                 "total_loss": 0.0,
                 "valid_observations": len(valid_indices),
             }
@@ -149,57 +122,13 @@ class PairwiseCosineLoss(nn.Module):
 
         geo_loss = self._geometric_loss(h, e, num_pairs, device)
         anc_loss = self._anchor_loss(h, e, embedding_weight, num_pairs, device)
-        emb_loss = self._embedding_loss(
-            embedding_hidden_states, embedding_weight, device
-        )
 
-        total = (
-            self.geometric_ratio * geo_loss
-            + self.anchor_ratio * anc_loss
-            + self.embedding_ratio * emb_loss
-        )
+        total = self.geometric_ratio * geo_loss + self.anchor_ratio * anc_loss
 
         metrics = {
             "geometric_loss": geo_loss.item(),
             "anchor_loss": anc_loss.item(),
-            "embedding_loss": emb_loss.item(),
             "total_loss": total.item(),
             "valid_observations": valid_batch,
         }
         return total, metrics
-
-
-def aggregate_hidden_states(
-    hidden_states: torch.Tensor,
-    stage: int,
-    position_decay: float,
-) -> torch.Tensor:
-    """
-    Aggregate per-position hidden states into a single observation vector.
-
-    Args:
-        hidden_states: (batch_size, seq_len, n_embd)
-        stage: Curriculum stage (1, 2, or 3)
-        position_decay: Exponential decay factor for stage 2
-
-    Returns:
-        Aggregated hidden states (batch_size, n_embd)
-    """
-    if stage == 1:
-        return hidden_states[:, -1, :]
-
-    if stage == 2:
-        seq_len = hidden_states.size(1)
-        weights = torch.pow(
-            torch.tensor(position_decay, device=hidden_states.device),
-            torch.arange(
-                seq_len,
-                device=hidden_states.device,
-                dtype=hidden_states.dtype,
-            ),
-        )
-        weights = weights / weights.sum()
-        return (hidden_states * weights.unsqueeze(0).unsqueeze(-1)).sum(dim=1)
-
-    # Stage 3: arithmetic mean
-    return hidden_states.mean(dim=1)

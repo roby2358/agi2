@@ -23,12 +23,8 @@ _TRAIN_DEFAULTS = dict(
     log_gpu_memory=False,
     num_workers=0,
     pin_memory=False,
-    geometric_ratio=0.5,
+    geometric_ratio=0.7,
     anchor_ratio=0.3,
-    embedding_ratio=0.2,
-    curriculum_stage=1,
-    stage_patience=5,
-    position_decay=0.5,
 )
 
 
@@ -46,7 +42,7 @@ class TestTrainingResume:
         self.tokenizer.fit(["hello world test"])
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("hello world test " * 100)  # Simple repeating text
+            f.write("hello world test " * 100)
             self.corpus_path = f.name
 
         self.checkpoint_path = None
@@ -54,39 +50,32 @@ class TestTrainingResume:
 
     def test_resume_training_basic(self):
         """Test basic resume training functionality"""
-        # Suppress PyTorch security warnings for tests
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore", category=FutureWarning, module="torch.serialization"
             )
 
-            # Create a simple model
             config = AGI2Config(
                 vocab_size=100, n_positions=64, n_embd=64, n_layer=2, n_head=2
             )
             model = AGI2Model(config)
 
-            # Create a simple tokenizer
             tokenizer = BasicTokenizer()
             tokenizer.fit(["hello world test"])
 
-            # Create a temporary corpus file
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".txt", delete=False
             ) as f:
-                f.write("hello world test " * 100)  # Simple repeating text
+                f.write("hello world test " * 100)
                 corpus_path = f.name
 
-            # Initialize variables to avoid UnboundLocalError
             checkpoint_path = None
             final_path = None
 
             try:
-                # Create a temporary save path
                 with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
                     save_path = f.name
 
-                # Train for 5 epochs to trigger checkpoint creation
                 history1 = train_model(
                     model=model,
                     tokenizer=tokenizer,
@@ -100,26 +89,19 @@ class TestTrainingResume:
                     **_TRAIN_DEFAULTS,
                 )
 
-                # Check that checkpoint was created
-                # Extract model name from save_path for new directory structure
                 model_name = os.path.basename(save_path).replace(".pt", "")
                 checkpoint_path = f"trained/{model_name}.pt_epoch_5.pt"
                 assert os.path.exists(checkpoint_path), "Checkpoint should be created"
 
-                # Load checkpoint and verify contents
                 checkpoint = torch.load(
                     checkpoint_path, map_location="cpu", weights_only=False
                 )
-                assert (
-                    "model_state_dict" in checkpoint
-                ), "Checkpoint should contain model state"
-                assert "epoch" in checkpoint, "Checkpoint should contain epoch"
-                assert checkpoint["epoch"] == 5, "Checkpoint should have correct epoch"
+                assert "model_state_dict" in checkpoint
+                assert "epoch" in checkpoint
+                assert checkpoint["epoch"] == 5
 
-                # Create new model instance
                 model2 = AGI2Model(config)
 
-                # Resume training for 1 more epoch
                 history2 = train_model(
                     model=model2,
                     tokenizer=tokenizer,
@@ -133,22 +115,17 @@ class TestTrainingResume:
                     **_TRAIN_DEFAULTS,
                 )
 
-                # Check that training continued from epoch 6
-                assert (
-                    len(history2["train_loss"]) == 1
-                ), "Should have trained for 1 epoch"
+                assert len(history2["train_loss"]) == 1
 
-                # Check final model was saved
                 final_path = f"trained/{model_name}.pt"
                 assert os.path.exists(final_path), "Final model should be saved"
 
                 final_checkpoint = torch.load(
                     final_path, map_location="cpu", weights_only=False
                 )
-                assert final_checkpoint["epoch"] == 6, "Final model should have epoch 6"
+                assert final_checkpoint["epoch"] == 6
 
             finally:
-                # Cleanup
                 if os.path.exists(corpus_path):
                     os.unlink(corpus_path)
                 if os.path.exists(save_path):
@@ -176,7 +153,6 @@ class TestTrainingResume:
             with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
                 save_path = f.name
 
-            # This should work (no resume)
             history = train_model(
                 model=model,
                 tokenizer=tokenizer,
@@ -190,7 +166,7 @@ class TestTrainingResume:
                 **_TRAIN_DEFAULTS,
             )
 
-            assert len(history["train_loss"]) == 1, "Should train for 1 epoch"
+            assert len(history["train_loss"]) == 1
 
         finally:
             if os.path.exists(corpus_path):

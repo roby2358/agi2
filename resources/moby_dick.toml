@@ -6,6 +6,7 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
+tokenizer = "tiktoken"
 model_name = "moby_dick"
 model_path = "trained/moby_dick.pt"
 
@@ -24,12 +25,8 @@ model_activation = "gelu"
 model_dropout = 0.1
 
 # Cosine similarity training
-geometric_ratio = 0.5
+geometric_ratio = 0.7
 anchor_ratio = 0.3
-embedding_ratio = 0.2
-curriculum_stage = 1
-stage_patience = 5
-position_decay = 0.5
 
 # Performance
 use_compile = false

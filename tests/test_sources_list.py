@@ -61,7 +61,7 @@ class TestSourcesList:
 
             # Test with sources list
             sources = [file1_path, file2_path]
-            dataset = TextDataset(sources, tokenizer, 10, 1)
+            dataset = TextDataset(sources, tokenizer, 10)
 
             assert len(dataset.sources) == 2
             assert dataset.sources == sources
@@ -84,7 +84,7 @@ class TestSourcesList:
             tokenizer.fit(["Hello world from single file."])
 
             # Test with single source
-            dataset = TextDataset(file_path, tokenizer, 10, 1)
+            dataset = TextDataset(file_path, tokenizer, 10)
 
             assert len(dataset.sources) == 1
             assert dataset.sources == [file_path]

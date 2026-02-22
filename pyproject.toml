@@ -43,6 +43,7 @@ dependencies = [
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
+    "tiktoken>=0.5.0",
 ]
 
 [project.urls]

@@ -61,12 +61,8 @@ class TestTraining:
             log_gpu_memory=False,
             num_workers=0,
             pin_memory=False,
-            geometric_ratio=0.5,
+            geometric_ratio=0.7,
             anchor_ratio=0.3,
-            embedding_ratio=0.2,
-            curriculum_stage=1,
-            stage_patience=5,
-            position_decay=0.5,
         )
         defaults.update(overrides)
         return train_model(**defaults)
@@ -84,8 +80,6 @@ class TestTraining:
             "optimizer",
             "loss_fn",
             "device",
-            "stage",
-            "position_decay",
             "clip_grad_norm",
             "scaler",
             "log_gpu_memory",
@@ -135,41 +129,8 @@ class TestTraining:
             if os.path.exists(corpus_path):
                 os.remove(corpus_path)
 
-    def test_checkpoint_includes_curriculum_stage(self) -> None:
-        """Test that checkpoints save curriculum stage."""
-        corpus_path = "temp_corpus.txt"
-        with open(corpus_path, "w") as f:
-            f.write("test text for training " * 100)
-
-        try:
-            self._train(corpus_path, curriculum_stage=2)
-
-            checkpoint = torch.load("trained/test_model.pt")
-            assert "curriculum_stage" in checkpoint
-            assert checkpoint["curriculum_stage"] == 2
-        finally:
-            if os.path.exists(corpus_path):
-                os.remove(corpus_path)
-
-    def test_training_with_different_stages(self) -> None:
-        """Test that training works with all curriculum stages."""
-        corpus_path = "temp_corpus.txt"
-        with open(corpus_path, "w") as f:
-            f.write("test text for training with many words " * 200)
-
-        for stage in [1, 2, 3]:
-            history = self._train(
-                corpus_path,
-                save_path=f"test_model_s{stage}",
-                curriculum_stage=stage,
-            )
-            assert len(history["train_loss"]) == 1
-
-        if os.path.exists(corpus_path):
-            os.remove(corpus_path)
-
-    def test_history_includes_stage_info(self) -> None:
-        """Test that training history includes stage information."""
+    def test_history_includes_metrics(self) -> None:
+        """Test that training history includes metrics."""
         corpus_path = "temp_corpus.txt"
         with open(corpus_path, "w") as f:
             f.write("test text for training " * 100)
@@ -177,9 +138,8 @@ class TestTraining:
         try:
             history = self._train(corpus_path, epochs=2)
 
-            assert "stages" in history
             assert "metrics" in history
-            assert len(history["stages"]) == 2
+            assert len(history["metrics"]) == 2
         finally:
             if os.path.exists(corpus_path):
                 os.remove(corpus_path)

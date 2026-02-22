@@ -6,11 +6,12 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
+tokenizer = "tiktoken"
 model_name = "lilwill"
 model_path = "trained/lilwill.pt"
 
 # Training
-epochs = 20
+epochs = 100
 batch_size = 16
 learning_rate = 1e-4
 seq_len = 512
@@ -18,18 +19,14 @@ seq_len = 512
 # Model architecture
 model_positions = 512
 model_embd = 384
-model_layer = 3
-model_head = 3
+model_layer = 6
+model_head = 6
 model_activation = "gelu"
 model_dropout = 0.1
 
 # Cosine similarity training
-geometric_ratio = 0.5
+geometric_ratio = 0.7
 anchor_ratio = 0.3
-embedding_ratio = 0.2
-curriculum_stage = 1
-stage_patience = 5
-position_decay = 0.5
 
 # Performance
 use_compile = false
@@ -41,12 +38,10 @@ resume = ""
 
 # Generation
 max_length = 300
-temperature = 0.8
+temperature = 0.3
 beam_size = 3
 model_seed = """
-Here lies the voice that taught us our own tongues. His words outlived
- his breath, shaping grief and joy alike, and in their echo we are
- never wholly without him.
+Give ear to him whose words our speech did frame, In joy and grief alike, we speak his name.
 """
 
 max_context_length = 512
