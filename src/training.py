@@ -274,7 +274,7 @@ def train_model(
 
     best_loss = float("inf")
     patience_counter = 0
-    early_stop_patience = 10
+    early_stop_patience = 20
 
     if start_epoch > 0:
         print(f"Resuming training from epoch {start_epoch + 1}")
@@ -328,14 +328,15 @@ def train_model(
             if k != "avg_loss":
                 print(f"  {k}: {v:.4f}")
 
-        # Early stop: loss collapsed to zero
-        if avg_loss < 1e-8:
-            print(f"\nEarly stop: loss collapsed to {avg_loss:.2e}")
+        # Early stop: raw gap collapsed to zero
+        raw_gap = epoch_metrics.get("raw_gap", avg_loss)
+        if raw_gap < 1e-6:
+            print(f"\nEarly stop: raw gap collapsed to {raw_gap:.2e}")
             break
 
-        # Early stop: loss plateaued
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+        # Early stop: raw gap plateaued (scale-independent)
+        if raw_gap < best_loss:
+            best_loss = raw_gap
             patience_counter = 0
         else:
             patience_counter += 1

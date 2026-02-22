@@ -11,6 +11,7 @@ where gap = sim(X', Y') - sim(X, Y)
 
 The sigmoid amplifies the gradient signal in the practical range (gaps of
 0.05-0.30) while preserving a free pass near zero and saturating at extremes.
+Scale ramps linearly over training to tighten tolerances as the model improves.
 """
 
 from typing import Tuple
@@ -28,8 +29,8 @@ class PairwiseCosineLoss(nn.Module):
     - Geometric: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, H_j) - sim(E_i, E_j)
     - Anchor: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, E_k) - sim(E_i, E_k)
 
-    Hidden states and target embeddings are single vectors (the last
-    hidden state from the transformer), not aggregated sequences.
+    Metrics include raw_gap (mean absolute similarity gap before sigmoid)
+    for scale-independent progress tracking and early stopping.
     """
 
     def __init__(
@@ -47,8 +48,8 @@ class PairwiseCosineLoss(nn.Module):
         """Compute sigmoid-amplified squared loss from a similarity gap.
 
         Maps gap through sigmoid(gap * scale), then squares the deviation
-        from 0.5. This amplifies the mid-range gradient signal (4-6x for
-        gaps of 0.05-0.15) while preserving a free pass at zero.
+        from 0.5. This amplifies the mid-range gradient signal while
+        preserving a free pass at zero.
         """
         return (torch.sigmoid(gap * self.sigmoid_scale) - 0.5) ** 2
 
@@ -68,15 +69,17 @@ class PairwiseCosineLoss(nn.Module):
 
     def _geometric_loss(
         self, h: torch.Tensor, e: torch.Tensor, num_pairs: int, device: torch.device
-    ) -> torch.Tensor:
-        """Compute geometric pair loss: hidden-vs-hidden similarity gap."""
+    ) -> Tuple[torch.Tensor, float]:
+        """Compute geometric pair loss and raw gap."""
         idx_i, idx_j = self._sample_pairs(h.size(0), num_pairs, device)
         if len(idx_i) == 0:
-            return torch.tensor(0.0, device=device)
+            return torch.tensor(0.0, device=device), 0.0
 
         sim_h = F.cosine_similarity(h[idx_i], h[idx_j], dim=-1)
         sim_e = F.cosine_similarity(e[idx_i], e[idx_j], dim=-1)
-        return self._sigmoid_loss(sim_h - sim_e).mean()
+        gap = sim_h - sim_e
+        raw_gap = gap.abs().mean().item()
+        return self._sigmoid_loss(gap).mean(), raw_gap
 
     def _anchor_loss(
         self,
@@ -85,8 +88,8 @@ class PairwiseCosineLoss(nn.Module):
         embedding_weight: torch.Tensor,
         num_pairs: int,
         device: torch.device,
-    ) -> torch.Tensor:
-        """Compute anchor pair loss: hidden-vs-random-vocab similarity gap."""
+    ) -> Tuple[torch.Tensor, float]:
+        """Compute anchor pair loss and raw gap."""
         valid_batch = h.size(0)
         vocab_size = embedding_weight.size(0)
 
@@ -96,7 +99,9 @@ class PairwiseCosineLoss(nn.Module):
 
         sim_h_ek = F.cosine_similarity(h[obs_idx], e_k, dim=-1)
         sim_e_ek = F.cosine_similarity(e[obs_idx], e_k, dim=-1)
-        return self._sigmoid_loss(sim_h_ek - sim_e_ek).mean()
+        gap = sim_h_ek - sim_e_ek
+        raw_gap = gap.abs().mean().item()
+        return self._sigmoid_loss(gap).mean(), raw_gap
 
     def forward(
         self,
@@ -113,7 +118,9 @@ class PairwiseCosineLoss(nn.Module):
             embedding_weight: Frozen vocab embedding matrix (vocab_size, n_embd)
 
         Returns:
-            Tuple of (total_loss, metrics_dict)
+            Tuple of (total_loss, metrics_dict).
+            metrics_dict includes raw_gap: the mean absolute similarity gap
+            before sigmoid, for scale-independent early stopping.
         """
         device = hidden_states.device
 
@@ -129,6 +136,7 @@ class PairwiseCosineLoss(nn.Module):
                 "geometric_loss": 0.0,
                 "anchor_loss": 0.0,
                 "total_loss": 0.0,
+                "raw_gap": 0.0,
                 "valid_observations": len(valid_indices),
             }
 
@@ -137,15 +145,19 @@ class PairwiseCosineLoss(nn.Module):
         valid_batch = h.size(0)
         num_pairs = max(1, valid_batch // 2)
 
-        geo_loss = self._geometric_loss(h, e, num_pairs, device)
-        anc_loss = self._anchor_loss(h, e, embedding_weight, num_pairs, device)
+        geo_loss, geo_gap = self._geometric_loss(h, e, num_pairs, device)
+        anc_loss, anc_gap = self._anchor_loss(h, e, embedding_weight, num_pairs, device)
 
         total = self.geometric_ratio * geo_loss + self.anchor_ratio * anc_loss
+
+        # Weighted raw gap matches the loss weighting
+        raw_gap = self.geometric_ratio * geo_gap + self.anchor_ratio * anc_gap
 
         metrics = {
             "geometric_loss": geo_loss.item(),
             "anchor_loss": anc_loss.item(),
             "total_loss": total.item(),
+            "raw_gap": raw_gap,
             "valid_observations": valid_batch,
         }
         return total, metrics

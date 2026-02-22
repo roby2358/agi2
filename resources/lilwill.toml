@@ -12,7 +12,7 @@ model_path = "trained/lilwill.pt"
 
 # Training
 epochs = 100
-batch_size = 16
+batch_size = 64
 learning_rate = 1e-4
 seq_len = 512
 
