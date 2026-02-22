@@ -302,8 +302,8 @@ def train_model(
         current_seq_len = int(seq_len_start + (seq_len_end - seq_len_start) * progress)
 
         # Scale batch size inversely with seq_len to keep memory constant.
-        # 1.5x headroom lets shorter sequences use more memory.
-        token_budget = int(batch_size * seq_len_end * 1.5)
+        # 1.125x headroom lets shorter sequences use more memory.
+        token_budget = int(batch_size * seq_len_end * 1.125)
         current_batch_size = max(4, token_budget // max(current_seq_len, 1))
 
         # Rebuild dataloader when seq_len changes
