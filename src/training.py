@@ -299,6 +299,11 @@ def train_model(
 
         current_seq_len = int(seq_len_start + (seq_len_end - seq_len_start) * progress)
 
+        # Scale batch size inversely with seq_len to keep memory constant.
+        # The configured batch_size applies at seq_len_end (longest sequences).
+        token_budget = batch_size * seq_len_end
+        current_batch_size = max(4, token_budget // max(current_seq_len, 1))
+
         # Rebuild dataloader when seq_len changes
         if current_seq_len != prev_seq_len or epoch == start_epoch:
             dataset.set_seq_len(current_seq_len)
@@ -306,7 +311,7 @@ def train_model(
 
         dataloader = _build_dataloader(
             dataset,
-            batch_size,
+            current_batch_size,
             num_workers,
             pin_memory,
             is_cuda,
@@ -315,7 +320,7 @@ def train_model(
         start_time = time.time()
         print(
             f"\nEpoch {epoch + 1}/{total_epochs} "
-            f"(seq={current_seq_len}, scale={current_scale:.2f})"
+            f"(seq={current_seq_len}, batch={current_batch_size}, scale={current_scale:.2f})"
         )
         print("-" * 50)
 
