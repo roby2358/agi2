@@ -6,7 +6,7 @@ the embedding codebook. Two loss terms:
 - Geometric: hidden states should preserve embedding similarity
 - Anchor: hidden states should stay aligned to the embedding space
 
-Loss: (sigmoid(gap * scale) - 0.5)²
+Loss: |sigmoid(gap * scale) - 0.5|
 where gap = sim(X', Y') - sim(X, Y)
 
 The sigmoid amplifies the gradient signal in the practical range (gaps of
@@ -26,8 +26,8 @@ class PairwiseCosineLoss(nn.Module):
     Pairwise cosine similarity loss with sigmoid amplification.
 
     Two pair types:
-    - Geometric: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, H_j) - sim(E_i, E_j)
-    - Anchor: (sigmoid(gap * scale) - 0.5)² where gap = sim(H_i, E_k) - sim(E_i, E_k)
+    - Geometric: |sigmoid(gap * scale) - 0.5| where gap = sim(H_i, H_j) - sim(E_i, E_j)
+    - Anchor: |sigmoid(gap * scale) - 0.5| where gap = sim(H_i, E_k) - sim(E_i, E_k)
 
     Metrics include raw_gap (mean absolute similarity gap before sigmoid)
     for scale-independent progress tracking and early stopping.
@@ -45,13 +45,13 @@ class PairwiseCosineLoss(nn.Module):
         self.sigmoid_scale = sigmoid_scale
 
     def _sigmoid_loss(self, gap: torch.Tensor) -> torch.Tensor:
-        """Compute sigmoid-amplified squared loss from a similarity gap.
+        """Compute sigmoid-amplified absolute loss from a similarity gap.
 
-        Maps gap through sigmoid(gap * scale), then squares the deviation
+        Maps gap through sigmoid(gap * scale), then takes absolute deviation
         from 0.5. This amplifies the mid-range gradient signal while
         preserving a free pass at zero.
         """
-        return (torch.sigmoid(gap * self.sigmoid_scale) - 0.5) ** 2
+        return (torch.sigmoid(gap * self.sigmoid_scale) - 0.5).abs()
 
     def _sample_pairs(
         self, batch_size: int, num_pairs: int, device: torch.device

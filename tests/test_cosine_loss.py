@@ -112,15 +112,15 @@ class TestPairwiseCosineLoss:
     def test_sigmoid_amplifies_midrange(self) -> None:
         """Sigmoid loss should be larger than squared loss for mid-range gaps."""
         gap = torch.tensor(0.15)
-        squared = (gap**2).item()
-        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5) ** 2
-        assert sigmoid_loss.item() > squared * 3  # at least 3x amplification
+        absolute = gap.abs().item()
+        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5).abs()
+        assert sigmoid_loss.item() > absolute * 2  # at least 2x amplification
 
     def test_sigmoid_free_pass_at_zero(self) -> None:
         """Sigmoid loss should be zero when gap is zero."""
         gap = torch.tensor(0.0)
-        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5) ** 2
-        assert sigmoid_loss.item() < 1e-10
+        sigmoid_loss = (torch.sigmoid(gap * 10.0) - 0.5).abs()
+        assert sigmoid_loss.item() < 1e-6
 
     def test_sigmoid_scale_increases_amplification(self) -> None:
         """Higher sigmoid_scale should produce larger loss for same gap."""
