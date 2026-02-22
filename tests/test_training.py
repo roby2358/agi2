@@ -53,7 +53,8 @@ class TestTraining:
             epochs=1,
             batch_size=2,
             learning_rate=1e-4,
-            seq_len=32,
+            seq_len_start=2,
+            seq_len_end=32,
             device="cpu",
             save_path="test_model",
             start_epoch=0,
@@ -65,6 +66,7 @@ class TestTraining:
             anchor_ratio=0.3,
             sigmoid_scale_start=3.0,
             sigmoid_scale_end=10.0,
+            early_stop_patience=20,
         )
         defaults.update(overrides)
         return train_model(**defaults)

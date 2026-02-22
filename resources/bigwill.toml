@@ -14,7 +14,8 @@ model_path = "trained/bigwill.pt"
 epochs = 100
 batch_size = 16
 learning_rate = 1e-4
-seq_len = 512
+seq_len_start = 2
+seq_len_end = 512
 
 # Model architecture
 model_positions = 512

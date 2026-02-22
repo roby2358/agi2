@@ -14,7 +14,8 @@ model_path = "trained/large_model.pt"
 epochs = 20
 batch_size = 8
 learning_rate = 2e-4
-seq_len = 2048
+seq_len_start = 2
+seq_len_end = 2048
 
 # Model architecture
 model_positions = 2048

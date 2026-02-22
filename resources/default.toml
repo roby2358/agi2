@@ -15,7 +15,8 @@ model_path = "trained/model.pt"
 epochs = 10
 batch_size = 12
 learning_rate = 3e-4
-seq_len = 1024
+seq_len_start = 2
+seq_len_end = 1024
 
 # Model architecture
 model_positions = 1024
@@ -30,6 +31,7 @@ geometric_ratio = 0.7
 anchor_ratio = 0.3
 sigmoid_scale_start = 3.0
 sigmoid_scale_end = 10.0
+early_stop_patience = 20
 
 # Performance
 use_compile = false  # torch.compile() for fused kernels

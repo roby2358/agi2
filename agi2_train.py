@@ -50,8 +50,9 @@ def main():
     epochs = get_config_value(config, "epochs", 10)
     batch_size = get_config_value(config, "batch_size", 4)
     learning_rate = get_config_value(config, "learning_rate", 1e-4)
-    seq_len = get_config_value(
-        config, "seq_len", get_config_value(config, "model_positions", 512)
+    seq_len_start = get_config_value(config, "seq_len_start", 2)
+    seq_len_end = get_config_value(
+        config, "seq_len_end", get_config_value(config, "model_positions", 512)
     )
     device_choice = get_config_value(config, "device", "auto")
     resume_path = get_config_value(config, "resume", "")
@@ -61,6 +62,7 @@ def main():
     anchor_ratio = get_config_value(config, "anchor_ratio", 0.3)
     sigmoid_scale_start = get_config_value(config, "sigmoid_scale_start", 3.0)
     sigmoid_scale_end = get_config_value(config, "sigmoid_scale_end", 10.0)
+    early_stop_patience = get_config_value(config, "early_stop_patience", 20)
 
     # Validate source paths
     for source_path in sources:
@@ -102,8 +104,8 @@ def main():
     # Create model configuration
     model_config = AGI2Config(
         vocab_size=actual_vocab_size,
-        n_positions=seq_len,
-        n_ctx=seq_len,
+        n_positions=seq_len_end,
+        n_ctx=seq_len_end,
         n_embd=get_config_value(config, "model_embd", 768),
         n_layer=get_config_value(config, "model_layer", 12),
         n_head=get_config_value(config, "model_head", 12),
@@ -154,7 +156,8 @@ def main():
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,
-            seq_len=seq_len,
+            seq_len_start=seq_len_start,
+            seq_len_end=seq_len_end,
             device=device,
             save_path=f"trained/{model_name}",
             start_epoch=start_epoch,
@@ -166,6 +169,7 @@ def main():
             anchor_ratio=anchor_ratio,
             sigmoid_scale_start=sigmoid_scale_start,
             sigmoid_scale_end=sigmoid_scale_end,
+            early_stop_patience=early_stop_patience,
         )
 
         print(f"Training completed successfully!")

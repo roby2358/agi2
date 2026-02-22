@@ -27,6 +27,7 @@ _TRAIN_DEFAULTS = dict(
     anchor_ratio=0.3,
     sigmoid_scale_start=3.0,
     sigmoid_scale_end=10.0,
+    early_stop_patience=20,
 )
 
 
@@ -84,7 +85,8 @@ class TestTrainingResume:
                     sources=[corpus_path],
                     epochs=5,
                     batch_size=2,
-                    seq_len=32,
+                    seq_len_start=2,
+                    seq_len_end=32,
                     device="cpu",
                     save_path=save_path,
                     start_epoch=0,
@@ -110,7 +112,8 @@ class TestTrainingResume:
                     sources=[corpus_path],
                     epochs=1,
                     batch_size=2,
-                    seq_len=32,
+                    seq_len_start=2,
+                    seq_len_end=32,
                     device="cpu",
                     save_path=save_path,
                     start_epoch=5,
@@ -161,7 +164,8 @@ class TestTrainingResume:
                 sources=[corpus_path],
                 epochs=1,
                 batch_size=2,
-                seq_len=32,
+                seq_len_start=2,
+                seq_len_end=32,
                 device="cpu",
                 save_path=save_path,
                 start_epoch=0,

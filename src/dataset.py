@@ -80,6 +80,11 @@ class TextDataset(Dataset):
 
         return sequences
 
+    def set_seq_len(self, seq_len: int) -> None:
+        """Update the sequence length and regenerate sequences."""
+        self.seq_len = seq_len
+        self.sequences = self._create_sequences()
+
     def __len__(self) -> int:
         """Return the number of sequences in the dataset."""
         return len(self.sequences)

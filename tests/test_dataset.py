@@ -60,6 +60,25 @@ class TestTextDataset:
         assert "sequence_length" in stats
         assert stats["sequence_length"] == 10
 
+    def test_set_seq_len(self) -> None:
+        """set_seq_len should regenerate sequences with new length."""
+        dataset = TextDataset(self.temp_file.name, self.tokenizer, 5)
+        len_at_5 = len(dataset)
+
+        dataset.set_seq_len(20)
+        assert dataset.seq_len == 20
+        assert len(dataset) > 0
+        # Different seq_len produces different sequence count
+        assert len(dataset) != len_at_5 or dataset.seq_len != 5
+
+    def test_minimum_seq_len(self) -> None:
+        """seq_len=2 should produce 1-token prompts."""
+        dataset = TextDataset(self.temp_file.name, self.tokenizer, 2)
+        assert len(dataset) > 0
+        item = dataset[0]
+        assert item["prompt_ids"].shape[0] == 1
+        assert item["target_ids"].shape[0] == 1
+
     def test_multiple_sources(self) -> None:
         """Dataset should support multiple source files."""
         temp2 = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")

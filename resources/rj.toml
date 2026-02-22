@@ -14,7 +14,8 @@ model_path = "trained/rj.pt"
 epochs = 50
 batch_size = 24
 learning_rate = 5e-4
-seq_len = 512
+seq_len_start = 2
+seq_len_end = 512
 
 # Model architecture
 model_positions = 512

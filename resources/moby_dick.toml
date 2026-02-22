@@ -14,7 +14,8 @@ model_path = "trained/moby_dick.pt"
 epochs = 100
 batch_size = 12
 learning_rate = 3e-4
-seq_len = 1024
+seq_len_start = 2
+seq_len_end = 1024
 
 # Model architecture
 model_positions = 1024

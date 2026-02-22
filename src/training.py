@@ -226,7 +226,8 @@ def train_model(
     epochs: int,
     batch_size: int,
     learning_rate: float,
-    seq_len: int,
+    seq_len_start: int,
+    seq_len_end: int,
     device: str,
     save_path: str,
     start_epoch: int,
@@ -238,6 +239,7 @@ def train_model(
     anchor_ratio: float,
     sigmoid_scale_start: float,
     sigmoid_scale_end: float,
+    early_stop_patience: int,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
@@ -250,15 +252,9 @@ def train_model(
     """
     device_obj = torch.device(device)
     model = model.to(device_obj)
+    is_cuda = device_obj.type == "cuda"
 
-    dataset = TextDataset(sources, tokenizer, seq_len)
-    dataloader = _build_dataloader(
-        dataset,
-        batch_size,
-        num_workers,
-        pin_memory,
-        device_obj.type == "cuda",
-    )
+    dataset = TextDataset(sources, tokenizer, seq_len_start)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
@@ -274,16 +270,16 @@ def train_model(
 
     best_loss = float("inf")
     patience_counter = 0
-    early_stop_patience = 20
+    prev_seq_len = seq_len_start
 
     if start_epoch > 0:
         print(f"Resuming training from epoch {start_epoch + 1}")
 
     print(f"Starting training for {epochs} epochs...")
     print(f"Model parameters: {model.get_num_params():,}")
-    print(f"Dataset size: {len(dataset)} sequences")
     print(f"Batch size: {batch_size}, LR: {learning_rate}")
     print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
+    print(f"Seq len: {seq_len_start} -> {seq_len_end} over {epochs} epochs")
     print(
         f"Sigmoid scale: {sigmoid_scale_start} -> {sigmoid_scale_end} over {epochs} epochs"
     )
@@ -293,15 +289,34 @@ def train_model(
         os.makedirs("trained", exist_ok=True)
 
     for epoch in range(start_epoch, start_epoch + epochs):
-        # Ramp sigmoid scale linearly
-        progress = epoch / max(start_epoch + epochs - 1, 1)
+        # Ramp sigmoid scale and seq_len linearly
+        total_epochs = start_epoch + epochs
+        progress = epoch / max(total_epochs - 1, 1)
         current_scale = (
             sigmoid_scale_start + (sigmoid_scale_end - sigmoid_scale_start) * progress
         )
         loss_fn.sigmoid_scale = current_scale
 
+        current_seq_len = int(seq_len_start + (seq_len_end - seq_len_start) * progress)
+
+        # Rebuild dataloader when seq_len changes
+        if current_seq_len != prev_seq_len or epoch == start_epoch:
+            dataset.set_seq_len(current_seq_len)
+            prev_seq_len = current_seq_len
+
+        dataloader = _build_dataloader(
+            dataset,
+            batch_size,
+            num_workers,
+            pin_memory,
+            is_cuda,
+        )
+
         start_time = time.time()
-        print(f"\nEpoch {epoch + 1}/{start_epoch + epochs} (scale={current_scale:.2f})")
+        print(
+            f"\nEpoch {epoch + 1}/{total_epochs} "
+            f"(seq={current_seq_len}, scale={current_scale:.2f})"
+        )
         print("-" * 50)
 
         epoch_metrics = train_epoch(
