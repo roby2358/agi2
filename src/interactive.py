@@ -21,10 +21,13 @@ class InteractivePrompt:
         tokenizer: Tokenizer for text processing
     """
 
-    def __init__(self, model, max_context_length: int = 1024, tokenizer=None):
+    def __init__(
+        self, model, max_context_length: int = 1024, tokenizer=None, device="cpu"
+    ):
         self.model = model
         self.max_context_length = max_context_length
         self.tokenizer = tokenizer
+        self.device = device
 
         # Conversation context
         self.conversation_history: List[Dict[str, Any]] = []
@@ -57,11 +60,14 @@ class InteractivePrompt:
 
         # Generate response
         response = generate_text(
-            model=self.model,
-            prompt=context,
-            max_length=100,
-            temperature=0.8,
-            tokenizer=self.tokenizer,
+            self.model,
+            context,
+            100,
+            0.8,
+            50,
+            0.9,
+            self.tokenizer,
+            self.device,
         )
 
         # Add model response to conversation history

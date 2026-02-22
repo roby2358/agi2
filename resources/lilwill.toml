@@ -10,7 +10,7 @@ model_name = "lilwill"
 model_path = "trained/lilwill.pt"
 
 # Training
-epochs = 100
+epochs = 20
 batch_size = 16
 learning_rate = 1e-4
 seq_len = 512
