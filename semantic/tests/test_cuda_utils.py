@@ -150,12 +150,10 @@ class TestCudaUtils:
             assert device == "cuda"
 
     def test_get_optimal_device_cuda_unavailable(self):
-        """Test get_optimal_device with cuda preference when CUDA is not available."""
+        """Test get_optimal_device raises when cuda is requested but unavailable."""
         with patch("cuda_utils.quick_cuda_check", return_value=False):
-            with patch("cuda_utils.warnings.warn") as mock_warn:
-                device = get_optimal_device("cuda")
-                assert device == "cpu"
-                assert mock_warn.called
+            with pytest.raises(RuntimeError, match="CUDA was requested"):
+                get_optimal_device("cuda")
 
     def test_get_optimal_device_cpu(self):
         """Test get_optimal_device with cpu preference."""

@@ -36,7 +36,7 @@ use_compile = false
 use_amp = false
 
 # Device and resume
-device = "auto"
+device = "cuda"
 
 # Generation
 max_length = 300

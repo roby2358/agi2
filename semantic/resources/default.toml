@@ -38,7 +38,7 @@ use_compile = false  # torch.compile() for fused kernels
 use_amp = false      # Automatic mixed precision (CUDA only)
 
 # Device and resume
-device = "auto"  # "cpu", "cuda", or "auto"
+device = "cuda"  # "cpu", "cuda", or "auto"
 resume = false   # Path to checkpoint, or false
 
 # Generation

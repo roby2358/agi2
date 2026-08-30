@@ -259,9 +259,7 @@ def train_model(
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
-    scaler = (
-        torch.cuda.amp.GradScaler() if use_amp and torch.cuda.is_available() else None
-    )
+    scaler = torch.cuda.amp.GradScaler() if use_amp and is_cuda else None
 
     history: Dict[str, Any] = {
         "train_loss": [],

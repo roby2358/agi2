@@ -8,7 +8,6 @@ at the start of processing scripts to ensure proper GPU support.
 
 import platform
 import subprocess
-import warnings
 from pathlib import Path
 
 
@@ -182,15 +181,20 @@ def get_optimal_device(device_preference="auto"):
 
     Returns:
         str: Device to use ("cpu" or "cuda")
+
+    Raises:
+        RuntimeError: If "cuda" is explicitly requested but not available.
     """
     if device_preference == "auto":
         return "cuda" if quick_cuda_check() else "cpu"
     elif device_preference == "cuda":
         if quick_cuda_check():
             return "cuda"
-        else:
-            warnings.warn("CUDA requested but not available, falling back to CPU")
-            return "cpu"
+        raise RuntimeError(
+            'CUDA was requested (device = "cuda") but is not available. '
+            "Check the NVIDIA driver and that PyTorch was installed with "
+            'CUDA support, or set device = "auto" to allow CPU fallback.'
+        )
     else:
         return device_preference
 
