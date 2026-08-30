@@ -37,7 +37,7 @@ use_amp = false
 
 # Device and resume
 device = "auto"
-resume = null
+resume = false
 
 # Generation
 max_length = 200

@@ -39,7 +39,7 @@ use_amp = false      # Automatic mixed precision (CUDA only)
 
 # Device and resume
 device = "auto"  # "cpu", "cuda", or "auto"
-resume = null    # Path to checkpoint, or null
+resume = false   # Path to checkpoint, or false
 
 # Generation
 max_length = 100

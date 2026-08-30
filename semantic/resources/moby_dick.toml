@@ -2,7 +2,7 @@
 # Usage: uv run python agi2_train.py resources/moby_dick.toml
 
 sources = [
-    "samples/moby_dick_pg2701.txt",
+    "../samples/moby_dick_pg2701.txt",
     "resources/training/corpus20.txt"
 ]
 

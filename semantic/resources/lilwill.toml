@@ -2,7 +2,7 @@
 # Usage: uv run python agi2_train.py resources/lilwill.toml
 
 sources = [
-    "samples/shakespeare_complete.txt",
+    "../samples/shakespeare_dialogue.txt",
     "resources/training/corpus20.txt"
 ]
 

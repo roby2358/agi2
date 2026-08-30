@@ -3,7 +3,7 @@
 # Usage: uv run python rwkv_train.py resources/lilwill_rwkv.toml
 
 sources = [
-    "samples/shakespeare_complete.txt",
+    "../samples/shakespeare_dialogue.txt",
     "resources/training/corpus20.txt"
 ]
 

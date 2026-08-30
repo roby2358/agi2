@@ -2,7 +2,7 @@
 # Usage: uv run python agi2_train.py resources/rj.toml
 
 sources = [
-    "samples/romeo_juliette.txt",
+    "../samples/romeo_juliette.txt",
     "resources/training/corpus20.txt"
 ]
 
