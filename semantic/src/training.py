@@ -2,8 +2,8 @@
 Training Functions
 
 Training loop for the AGI2 model using pairwise cosine similarity loss.
-Only the last hidden vector is compared — we don't care how it got there,
-just where it landed.
+Only the hidden vector at the last prompt position is compared — it must
+land near the embedding of the next (unseen) target token.
 """
 
 import logging
@@ -51,28 +51,29 @@ def _collate_fn(
 
 def _compute_batch_loss(
     model: nn.Module,
-    full_input: torch.Tensor,
     prompt_ids: torch.Tensor,
+    prompt_mask: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
 ) -> tuple:
     """Compute pairwise cosine similarity loss for a single batch.
 
-    Uses only the last hidden vector — the final position of the target
-    sequence after running through the transformer.
+    The model sees only the prompt; the hidden vector at each sample's last
+    real prompt position must predict the target token it has never seen.
+    This matches generation, which scores the next token from the hidden
+    state at the end of the sequence so far.
     """
-    _, hidden_states = model.forward_hidden(full_input)
+    _, hidden_states = model.forward_hidden(prompt_ids)
 
-    # Last hidden vector of the target region
-    prompt_len = prompt_ids.size(1)
-    target_len = target_ids.size(1)
-    last_target_pos = prompt_len + target_len - 1
-    h = hidden_states[:, last_target_pos, :]
+    # Hidden vector at the last unpadded prompt position, per sample
+    last_prompt_pos = prompt_mask.sum(dim=1) - 1
+    batch_index = torch.arange(prompt_ids.size(0), device=prompt_ids.device)
+    h = hidden_states[batch_index, last_prompt_pos, :]
 
-    # Last target embedding from the codebook
+    # Embedding of the next token (the target) from the codebook
     embedding_weight = model.token_embeddings.embedding.weight
-    last_target_token = target_ids[:, -1]
-    e = embedding_weight[last_target_token]
+    next_token = target_ids[:, 0]
+    e = embedding_weight[next_token]
 
     return loss_fn(h, e, embedding_weight)
 
@@ -81,8 +82,8 @@ def _step_with_amp(
     model: nn.Module,
     optimizer: optim.Optimizer,
     scaler: torch.cuda.amp.GradScaler,
-    full_input: torch.Tensor,
     prompt_ids: torch.Tensor,
+    prompt_mask: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
     clip_grad_norm: float,
@@ -91,8 +92,8 @@ def _step_with_amp(
     with torch.cuda.amp.autocast():
         loss, metrics = _compute_batch_loss(
             model,
-            full_input,
             prompt_ids,
+            prompt_mask,
             target_ids,
             loss_fn,
         )
@@ -108,8 +109,8 @@ def _step_with_amp(
 def _step_standard(
     model: nn.Module,
     optimizer: optim.Optimizer,
-    full_input: torch.Tensor,
     prompt_ids: torch.Tensor,
+    prompt_mask: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
     clip_grad_norm: float,
@@ -117,8 +118,8 @@ def _step_standard(
     """Forward + backward without AMP."""
     loss, metrics = _compute_batch_loss(
         model,
-        full_input,
         prompt_ids,
+        prompt_mask,
         target_ids,
         loss_fn,
     )
@@ -151,8 +152,8 @@ def train_epoch(
 
     for batch_idx, batch in enumerate(dataloader):
         prompt_ids = batch["prompt_ids"].to(device, non_blocking=True)
+        prompt_mask = batch["prompt_mask"].to(device, non_blocking=True)
         target_ids = batch["target_ids"].to(device, non_blocking=True)
-        full_input = torch.cat([prompt_ids, target_ids], dim=1)
 
         optimizer.zero_grad()
 
@@ -161,8 +162,8 @@ def train_epoch(
                 model,
                 optimizer,
                 scaler,
-                full_input,
                 prompt_ids,
+                prompt_mask,
                 target_ids,
                 loss_fn,
                 clip_grad_norm,
@@ -171,8 +172,8 @@ def train_epoch(
             loss, metrics = _step_standard(
                 model,
                 optimizer,
-                full_input,
                 prompt_ids,
+                prompt_mask,
                 target_ids,
                 loss_fn,
                 clip_grad_norm,
