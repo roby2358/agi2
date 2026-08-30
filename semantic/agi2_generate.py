@@ -8,40 +8,19 @@ Usage: uv run python agi2_generate.py <config_file> [prompt]
 import sys
 from pathlib import Path
 
-import torch
-
 from src.basic_tokenizer import BasicTokenizer
 from src.config import AGI2Config
 from src.config_loader import get_config_value, load_config
 from src.cuda_utils import check_cuda_availability, get_optimal_device
 from src.generation import generate_text
 from src.model import AGI2Model
+from src.model_io import load_model_and_tokenizer
 
 
-def _load_model_and_tokenizer(model_path, device):
-    """Load model and tokenizer from a checkpoint file."""
-    checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
-
-    if not isinstance(checkpoint, dict) or "model_state_dict" not in checkpoint:
-        raise ValueError("Expected a checkpoint dictionary with 'model_state_dict'")
-
-    config_obj = checkpoint.get("config")
-    if config_obj is None:
-        raise ValueError("No config found in checkpoint")
-
-    model = AGI2Model(config_obj)
-    model.load_state_dict(checkpoint["model_state_dict"])
-
-    tokenizer = checkpoint.get("tokenizer")
-    if tokenizer is None:
-        raise ValueError("No tokenizer found in checkpoint")
-
-    return model, tokenizer
-
-
-def main():
+def main(model_cls=AGI2Model):
     if len(sys.argv) < 2:
-        print("Usage: uv run python agi2_generate.py <config_file> [prompt]")
+        script = Path(sys.argv[0]).name
+        print(f"Usage: uv run python {script} <config_file> [prompt]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -66,7 +45,7 @@ def main():
     device = get_optimal_device(device_choice)
     print(f"Using device: {device}")
 
-    model, tokenizer = _load_model_and_tokenizer(model_path, device)
+    model, tokenizer = load_model_and_tokenizer(model_path, device, model_cls)
     print(f"Model config: {model.config}")
 
     full_prompt = model_seed + prompt if model_seed else prompt

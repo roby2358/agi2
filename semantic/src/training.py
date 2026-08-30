@@ -428,6 +428,7 @@ def _save_checkpoint(
             "optimizer_state_dict": optimizer.state_dict(),
             "loss": loss,
             "config": model.config,
+            "model_type": type(getattr(model, "_orig_mod", model)).__name__,
             "tokenizer": tokenizer,
         },
         path,

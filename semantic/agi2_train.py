@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import torch
-
 from src.basic_tokenizer import BasicTokenizer
 from src.config import AGI2Config
 from src.config_loader import get_config_value, get_sources_list, get_training_config
@@ -23,10 +22,11 @@ from src.tiktoken_tokenizer import TiktokenTokenizer
 from src.training import train_model
 
 
-def main():
+def main(model_cls=AGI2Model):
     if len(sys.argv) < 2:
-        print("Usage: python agi2_train.py <config_file>")
-        print("Example: python agi2_train.py resources/small_model.toml")
+        script = Path(sys.argv[0]).name
+        print(f"Usage: python {script} <config_file>")
+        print(f"Example: python {script} resources/small_model.toml")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -116,9 +116,10 @@ def main():
     )
 
     # Create model
-    model = AGI2Model(model_config)
+    model = model_cls(model_config)
     print(
-        f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters"
+        f"{model_cls.__name__} initialized with "
+        f"{sum(p.numel() for p in model.parameters()):,} parameters"
     )
 
     # Resume from checkpoint if specified

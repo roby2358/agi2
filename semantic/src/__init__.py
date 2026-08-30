@@ -24,6 +24,8 @@ from .ffn import FeedForward
 from .generation import generate_text
 from .interactive import InteractivePrompt
 from .model import AGI2Model
+from .model_io import load_model_and_tokenizer
+from .rwkv import RWKVModel
 from .training import train_epoch, train_model
 from .transformer import TransformerBlock
 
@@ -41,6 +43,8 @@ __all__ = [
     "FeedForward",
     "TransformerBlock",
     "AGI2Model",
+    "RWKVModel",
+    "load_model_and_tokenizer",
     # Tokenization and data
     "BasicTokenizer",
     "BPETokenizer",
