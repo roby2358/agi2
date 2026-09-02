@@ -1,117 +1,148 @@
+Priority:   70
+Status: ToDo
+ID: wkv-chunked-un6i
+Created: 2026-09-02T06:38:54Z
+Updated: 2026-09-02T06:38:54Z
+
+Rewrite the RWKV WKV recurrence in semantic/src/rwkv.py (_wkv, currently a Python `for t in range(seq_len)` loop) as a chunked scan: process blocks of timesteps with batched tensor ops instead of one step at a time, carrying the (numerically stable, log-space max-tracking) state between chunks. The current loop launches ~10 tiny CUDA kernels per timestep, so training is kernel-launch-bound — one CPU core pegged, RTX 4090 at ~240W/450W despite 90% reported utilization. Must preserve the stable WKV formulation (float32 internals, max-shift trick), keep mypy strict clean, and produce outputs matching the loop implementation within float tolerance (add a unit test comparing chunked vs. naive on random inputs). Verify GPU-side speedup with a before/after timing of one epoch of lilwill_rwkv.
+---
 Priority:   87
 Status: ToDo
 ID: primer-39nj
+
 jack jane primer task, 3000 word vocabularly, 1 megabyte
 ---
 Priority:   85
 Status: ToDo
 ID: script-merge-gfst
+
 Combine the agi2_* scripts into a single script with a command parameter
 ---
 Priority:   80
 Status: ToDo
 ID: corpus-f8d8
+
 build a synthetic training set in corpus.txt
 ---
 Priority:   75
 Status: ToDo
 ID: corpus02-az57
+
 Build corpus02.txt: Critical Thinking & Fallacy Detection content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus03-hv8d
+
 Build corpus03.txt: Problem Decomposition & Pattern Recognition content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus04-kjk5
+
 Build corpus04.txt: Physics & Physical Sciences content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus05-a3p9
+
 Build corpus05.txt: Chemistry & Materials Science content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus06-vbvr
+
 Build corpus06.txt: Biology & Life Sciences content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus07-4wmx
+
 Build corpus07.txt: Earth & Space Sciences content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus08-3uvj
+
 Build corpus08.txt: Creative Writing & Storytelling content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus09-eb3h
+
 Build corpus09.txt: Humor & Wit content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus10-deqv
+
 Build corpus10.txt: Programming & Computer Science content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus11-vixv
+
 Build corpus11.txt: Mathematics & Engineering content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus12-nmxj
+
 Build corpus12.txt: System Design & Architecture content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus13-qxsv
+
 Build corpus13.txt: Cognitive Psychology & Decision Making content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus14-ufr8
+
 Build corpus14.txt: Social Psychology & Human Dynamics content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus15-i2hp
+
 Build corpus15.txt: Rhetoric & Persuasion content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus16-s64p
+
 Build corpus16.txt: Language & Linguistics content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus17-mfcd
+
 Build corpus17.txt: Ethics & Moral Philosophy content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus18-p69u
+
 Build corpus18.txt: Philosophy & Existential Questions content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus19-twvr
+
 Build corpus19.txt: Reasoning Exercise Drills content
 ---
 Priority:   75
 Status: ToDo
 ID: corpus20-hsh8
+
 Build corpus20.txt: Rhetorical Melee Drills content
 A free-flowing, dynamic exchange of arguments and counter-arguments
 ---
 Priority:   70
 Status: ToDo
 ID: lora-train-hhgd
+
 Train a LoRA for more consistent conversation
 
 Implementation requirements:
@@ -123,144 +154,173 @@ Implementation requirements:
 Priority:   60
 Status: ToDo
 ID: api-zbgu
+
 Implement HTTP API server for model inference and training management
 ---
 Priority:   58
 Status: ToDo
 ID: mcp-cn3h
+
 Implement MCP wrapper/server for model integration with MCP clients
 ---
 Priority:   55
 Status: ToDo
 ID: bpe-ys58
+
 Implement byte-pair encoding tokenizer for text processing
 ---
 Priority:   50
 Status: ToDo
 ID: ngram-tok-pei4
+
 Implement an n-gram encoding tokenizer
 ---
 Priority:   46
 Status: ToDo
 ID: quant-ptq-zaqs
+
 Implement post-training quantization (PTQ) for inference - convert FP32/FP16 to INT8/INT4 for 2-8x memory savings and faster computation on integer hardware. Add quantize_model method to model.py with torch.quantization.quantize_dynamic for Linear and LSTM layers.
 ---
 Priority:   44
 Status: ToDo
 ID: quant-qat-gyx4
+
 Implement quantization-aware training (QAT) - add quantization layers during training with QuantStub/DeQuantStub in transformer blocks. This enables better accuracy by training with quantization in mind rather than applying it post-training.
 ---
 Priority:   42
 Status: ToDo
 ID: quant-amp-ywnh
+
 Integrate mixed precision training with PyTorch AMP - use autocast and GradScaler for FP16 training to reduce memory usage and potentially speed up training while maintaining numerical stability.
 ---
 Priority:   40
 Status: ToDo
 ID: ui-ugvz
+
 Implement interactive prompted UI for text generation with real-time input/output
 ---
 Priority:    0
 Status: Done
 ID: fix-warn-429d
+
 Fix the warning message that comes with each generation
 ---
 Priority:    0
 Status: Done
 ID: toml-sources-572x
+
 Model TOML supports a list of sources that the training script uses
 ---
 Priority:    0
 Status: Done
 ID: corpus01-fzfq
+
 Build corpus01.txt: Formal Logic & Mathematical Reasoning content
 ---
 Priority:    0
 Status: Done
 ID: skeleton-emq9
+
 Write skeleton for runtime project - create directory structure, empty files, and basic imports for all components
 ---
 Priority:    0
 Status: Done
 ID: interactive-q9kj
+
 Implement InteractivePrompt class for interactive conversation management with context window building
 ---
 Priority:    0
 Status: Done
 ID: serialize-hnyf
+
 Implement model serialization (save/load) with configuration preservation
 ---
 Priority:    0
 Status: Done
 ID: main-7dye
+
 Create main training script that takes corpus file path as command line argument
 ---
 Priority:    0
 Status: Done
 ID: generate-h7a3
+
 Add text generation function with temperature and max_length parameters
 ---
 Priority:    0
 Status: Done
 ID: training-zyhg
+
 Implement training loop: forward pass, loss calculation, backpropagation
 ---
 Priority:    0
 Status: Done
 ID: data-nkyd
+
 Create data loading pipeline: read text file, tokenize, create training batches
 ---
 Priority:    0
 Status: Done
 ID: loss-opt-cf66
+
 Implement loss function (cross-entropy) and optimizer setup for training
 ---
 Priority:    0
 Status: Done
 ID: train-aaab
+
 Create simple training function that takes text and epochs
 ---
 Priority:    0
 Status: Done
 ID: tokenizer-aaac
+
 Implement basic text tokenization
 ---
 Priority:    0
 Status: Done
 ID: ffn-mw74
+
 Implement FeedForward class with GELU activation, dropout, and proper dimensions
 ---
 Priority:    0
 Status: Done
 ID: attention-d5cv
+
 Implement MultiHeadAttention class with scaled dot-product attention and causal masking
 ---
 Priority:    0
 Status: Done
 ID: embeddings-hvqe
+
 Implement TokenEmbeddings and PositionEmbeddings classes with proper initialization and forward methods
 ---
 Priority:    0
 Status: Done
 ID: transformer-dgts
+
 Implement TransformerBlock class combining attention and feed-forward layers
 ---
 Priority:    0
 Status: Done
 ID: model-aaaa
+
 Implement AGI2Model class with configurable architecture and forward pass
 ---
 Priority:    0
 Status: Done
 ID: config-yurt
+
 Implement AGI2Config class for model configuration management
 ---
 Priority:    0
 Status: Done
 ID: readme-a7dk
+
 Refactor README to focus on single AGI-2 model implementation instead of broad framework
 ---
 Priority:    0
 Status: Done
 ID: spec-un2j
+
 Flesh out SPEC.md with detailed implementation requirements in MUST/SHOULD/MAY format
