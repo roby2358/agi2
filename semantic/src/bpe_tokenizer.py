@@ -1,94 +1,88 @@
 """
 BPE Tokenizer
 
-This module provides BPETokenizer class for Byte-Pair Encoding text processing.
+Corpus-trained byte-level BPE via the HuggingFace `tokenizers` library
+(Rust-backed). Matches the interface expected by the AGI2 training and
+generation pipeline: fit / encode / decode / vocab / vocab_size.
+
+Byte-level BPE guarantees lossless round-tripping of arbitrary text: the
+initial alphabet covers all 256 bytes, so there are no unknown characters.
 """
 
-from collections import Counter
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional
+
+from tokenizers import Tokenizer
+from tokenizers.decoders import ByteLevel as ByteLevelDecoder
+from tokenizers.models import BPE
+from tokenizers.pre_tokenizers import ByteLevel
+from tokenizers.trainers import BpeTrainer
 
 
 class BPETokenizer:
     """
-    Byte-Pair Encoding tokenizer for more sophisticated text processing.
+    Byte-level BPE tokenizer trained on the project corpus.
+
+    Unlike the pre-built tiktoken GPT-2 vocabulary, merges are learned from
+    the training text itself, so a small vocabulary compresses the corpus
+    well and every token embedding receives real training signal.
 
     Args:
-        vocab_size: Maximum vocabulary size
+        vocab_size: Target vocabulary size, including the 256 byte-level
+            base tokens and the <EOS> special token. The fitted vocabulary
+            may come out slightly smaller if the corpus supports fewer
+            merges.
     """
 
-    def __init__(self, vocab_size: int = 50000):
+    EOS_TOKEN = "<EOS>"
+
+    def __init__(self, vocab_size: int = 4096):
         self.vocab_size = vocab_size
-        self.vocab = {}
-        self.reverse_vocab = {}
-        self.merges = {}
+        self.vocab: Dict[str, int] = {}
+        self._tokenizer: Optional[Tokenizer] = None
 
     def fit(self, texts: List[str]) -> None:
         """
-        Train BPE tokenizer on a list of texts.
+        Train the BPE vocabulary on a list of texts.
 
         Args:
             texts: List of text strings to train on
         """
-        # This is a simplified BPE implementation
-        # In practice, you'd want to use a more robust implementation
+        tokenizer = Tokenizer(BPE(unk_token=None))
+        tokenizer.pre_tokenizer = ByteLevel(add_prefix_space=False)
+        tokenizer.decoder = ByteLevelDecoder()
 
-        # Start with character-level vocabulary
-        chars = set()
-        for text in texts:
-            chars.update(text)
+        trainer = BpeTrainer(
+            vocab_size=self.vocab_size,
+            special_tokens=[self.EOS_TOKEN],
+            initial_alphabet=ByteLevel.alphabet(),
+            show_progress=False,
+        )
+        tokenizer.train_from_iterator(texts, trainer=trainer)
 
-        # Initialize vocabulary
-        self.vocab = {char: i for i, char in enumerate(sorted(chars))}
+        self._tokenizer = tokenizer
+        self.vocab_size = tokenizer.get_vocab_size()
+        self.vocab = {self.EOS_TOKEN: tokenizer.token_to_id(self.EOS_TOKEN)}
 
-        # Simple merge strategy (this is a placeholder)
-        # Real BPE would count bigram frequencies and merge most common pairs
-
-        self.reverse_vocab = {v: k for k, v in self.vocab.items()}
+    def _require_fitted(self) -> Tokenizer:
+        if self._tokenizer is None:
+            raise RuntimeError("BPETokenizer must be fitted before use")
+        return self._tokenizer
 
     def encode(self, text: str) -> List[int]:
-        """
-        Encode text using BPE.
-
-        Args:
-            text: Input text string
-
-        Returns:
-            List of token IDs
-        """
-        # Simplified encoding - just character-level for now
-        tokens = []
-        for char in text:
-            if char in self.vocab:
-                tokens.append(self.vocab[char])
-            else:
-                # Handle unknown characters
-                tokens.append(0)  # Default to first token
-
-        return tokens
+        """Encode text to token IDs using the trained BPE merges."""
+        return list(self._require_fitted().encode(text).ids)
 
     def decode(self, token_ids: List[int]) -> str:
-        """
-        Decode BPE token IDs back to text.
-
-        Args:
-            token_ids: List of token IDs
-
-        Returns:
-            Decoded text string
-        """
-        text = ""
-        for token_id in token_ids:
-            if token_id in self.reverse_vocab:
-                text += self.reverse_vocab[token_id]
-
-        return text
+        """Decode token IDs back to text."""
+        return str(self._require_fitted().decode(token_ids, skip_special_tokens=False))
 
     def save_vocab(self, filepath: str) -> None:
-        """Save vocabulary to file."""
-        # Placeholder for vocabulary persistence
-        pass
+        """Save the trained tokenizer (vocab + merges) to a JSON file."""
+        self._require_fitted().save(filepath)
 
     def load_vocab(self, filepath: str) -> None:
-        """Load vocabulary from file."""
-        # Placeholder for vocabulary loading
-        pass
+        """Load a trained tokenizer (vocab + merges) from a JSON file."""
+        tokenizer = Tokenizer.from_file(filepath)
+        self._tokenizer = tokenizer
+        self.vocab_size = tokenizer.get_vocab_size()
+        self.vocab = {self.EOS_TOKEN: tokenizer.token_to_id(self.EOS_TOKEN)}

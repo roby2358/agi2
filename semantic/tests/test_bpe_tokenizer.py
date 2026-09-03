@@ -1,104 +1,106 @@
 """Tests for BPETokenizer class."""
 
-import pytest
+import pickle
 
+import pytest
 from src.bpe_tokenizer import BPETokenizer
 
+CORPUS = [
+    "What ho! Give ear to him whose words our speech did frame.",
+    "In joy and grief alike, we speak his name.",
+    "Thou art more lovely and more temperate.",
+]
 
+
+@pytest.mark.unit
 class TestBPETokenizer:
     def test_initialization(self):
         """Test BPETokenizer initialization."""
         tokenizer = BPETokenizer(vocab_size=1000)
         assert tokenizer.vocab_size == 1000
         assert tokenizer.vocab == {}
-        assert tokenizer.reverse_vocab == {}
-        assert tokenizer.merges == {}
 
     def test_initialization_default_vocab_size(self):
         """Test BPETokenizer initialization with default vocab_size."""
         tokenizer = BPETokenizer()
-        assert tokenizer.vocab_size == 50000
-        assert tokenizer.vocab == {}
-        assert tokenizer.reverse_vocab == {}
-        assert tokenizer.merges == {}
+        assert tokenizer.vocab_size == 4096
+
+    def test_unfitted_raises(self):
+        """Encoding before fit must fail loudly, not silently."""
+        tokenizer = BPETokenizer()
+        with pytest.raises(RuntimeError, match="must be fitted"):
+            tokenizer.encode("hello")
+        with pytest.raises(RuntimeError, match="must be fitted"):
+            tokenizer.decode([0])
 
     def test_fit_builds_vocabulary(self):
-        """Test that fit method builds vocabulary from texts."""
-        tokenizer = BPETokenizer(vocab_size=100)
-        texts = ["Hello World", "Test Text", "Another Example"]
-        tokenizer.fit(texts)
+        """fit trains a vocabulary of roughly the requested size."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
 
-        # Should have built vocabulary
-        assert len(tokenizer.vocab) > 0
-        assert len(tokenizer.reverse_vocab) > 0
-
-        # Check that reverse_vocab is inverse of vocab
-        for char, idx in tokenizer.vocab.items():
-            assert tokenizer.reverse_vocab[idx] == char
+        # Byte-level alphabet + <EOS> is the floor; target is the ceiling
+        assert 257 <= tokenizer.vocab_size <= 300
+        assert "<EOS>" in tokenizer.vocab
+        assert tokenizer.vocab["<EOS>"] >= 0
 
     def test_encode_decode_roundtrip(self):
-        """Test that encode followed by decode returns original text."""
-        tokenizer = BPETokenizer(vocab_size=100)
-        texts = ["Hello World"]
-        tokenizer.fit(texts)
+        """Byte-level BPE must round-trip corpus text exactly."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
 
-        original_text = "Hello World"
-        encoded = tokenizer.encode(original_text)
-        decoded = tokenizer.decode(encoded)
+        for text in CORPUS:
+            assert tokenizer.decode(tokenizer.encode(text)) == text
 
-        # Should be able to reconstruct the text
-        assert decoded == original_text
+    def test_roundtrip_unseen_characters(self):
+        """Text with characters never seen in training still round-trips
+        (byte-level alphabet covers everything)."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
 
-    def test_encode_with_unknown_characters(self):
-        """Test encoding handles unknown characters correctly."""
-        tokenizer = BPETokenizer(vocab_size=100)
-        texts = ["Hello World"]
-        tokenizer.fit(texts)
+        text = "Zounds! 42 éüñ 世界"
+        assert tokenizer.decode(tokenizer.encode(text)) == text
 
-        # Test with unknown character
-        encoded = tokenizer.encode("Hello World!")
-        assert len(encoded) == len("Hello World!")
+    def test_merges_learned(self):
+        """A trained vocab must contain multi-byte merged tokens, not just
+        the byte alphabet."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
+        # 256 bytes + <EOS> = 257; anything above that is a learned merge
+        assert tokenizer.vocab_size > 257
 
-        # Unknown character '!' should map to default token (0)
-        # Find the position of '!' in the original text
-        exclamation_pos = "Hello World!".index("!")
-        assert encoded[exclamation_pos] == 0
+    def test_compression(self):
+        """Trained merges should compress corpus text below one token per
+        character."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
+        text = CORPUS[0]
+        assert len(tokenizer.encode(text)) < len(text)
 
-    def test_vocabulary_consistency(self):
-        """Test that vocabulary and reverse_vocabulary are consistent."""
-        tokenizer = BPETokenizer(vocab_size=100)
-        texts = ["Hello World", "Test Text"]
-        tokenizer.fit(texts)
+    def test_pickle_roundtrip(self):
+        """The tokenizer rides inside torch checkpoints via pickle."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
 
-        # Check bidirectional mapping
-        for char, idx in tokenizer.vocab.items():
-            assert tokenizer.reverse_vocab[idx] == char
+        restored = pickle.loads(pickle.dumps(tokenizer))
 
-        for idx, char in tokenizer.reverse_vocab.items():
-            assert tokenizer.vocab[char] == idx
+        text = CORPUS[1]
+        assert restored.encode(text) == tokenizer.encode(text)
+        assert restored.decode(restored.encode(text)) == text
+        assert restored.vocab_size == tokenizer.vocab_size
+        assert restored.vocab == tokenizer.vocab
 
-        # Check sizes match
-        assert len(tokenizer.vocab) == len(tokenizer.reverse_vocab)
+    def test_save_load_vocab(self, tmp_path):
+        """save_vocab/load_vocab persist the trained tokenizer to JSON."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(CORPUS)
 
-    def test_save_load_vocab_placeholders(self):
-        """Test that save_vocab and load_vocab methods exist (placeholders)."""
-        tokenizer = BPETokenizer()
+        path = str(tmp_path / "bpe.json")
+        tokenizer.save_vocab(path)
 
-        # These methods should exist but are placeholders
-        assert hasattr(tokenizer, "save_vocab")
-        assert hasattr(tokenizer, "load_vocab")
+        loaded = BPETokenizer()
+        loaded.load_vocab(path)
 
-        # Should not raise errors when called
-        tokenizer.save_vocab("test.txt")
-        tokenizer.load_vocab("test.txt")
-
-    def test_merges_attribute(self):
-        """Test that merges attribute is properly initialized."""
-        tokenizer = BPETokenizer()
-        assert hasattr(tokenizer, "merges")
-        assert tokenizer.merges == {}
-
-        # Should remain empty for this simplified implementation
-        texts = ["Hello World"]
-        tokenizer.fit(texts)
-        assert tokenizer.merges == {}
+        text = CORPUS[2]
+        assert loaded.encode(text) == tokenizer.encode(text)
+        assert loaded.vocab_size == tokenizer.vocab_size
+        assert loaded.vocab == tokenizer.vocab

@@ -7,7 +7,8 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
-tokenizer = "tiktoken"
+tokenizer = "bpe"
+bpe_vocab_size = 4096
 model_name = "lilwill_rwkv"
 model_path = "trained/lilwill_rwkv.pt"
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import torch
 from src.basic_tokenizer import BasicTokenizer
+from src.bpe_tokenizer import BPETokenizer
 from src.config import AGI2Config
 from src.config_loader import get_config_value, get_sources_list, get_training_config
 from src.cuda_utils import check_cuda_availability, get_optimal_device
@@ -89,6 +90,17 @@ def main(model_cls=AGI2Model):
         tokenizer = TiktokenTokenizer()
         actual_vocab_size = tokenizer.vocab_size
         print(f"Loaded tiktoken GPT-2 vocabulary: {actual_vocab_size} tokens")
+    elif tokenizer_type == "bpe":
+        bpe_vocab_size = get_config_value(config, "bpe_vocab_size", 4096)
+        print(f"Training BPE vocabulary (target {bpe_vocab_size} tokens)...")
+        corpus_texts = []
+        for source_path in sources:
+            with open(source_path, "r", encoding="utf-8") as f:
+                corpus_texts.append(f.read())
+        tokenizer = BPETokenizer(vocab_size=bpe_vocab_size)
+        tokenizer.fit(corpus_texts)
+        actual_vocab_size = tokenizer.vocab_size
+        print(f"BPE vocabulary built from corpus: {actual_vocab_size} tokens")
     elif tokenizer_type == "char":
         print("Building character vocabulary from corpus...")
         with open(sources[0], "r", encoding="utf-8") as f:

@@ -7,7 +7,8 @@ sources = [
     "resources/training/corpus20.txt"
 ]
 
-tokenizer = "tiktoken"  # "tiktoken" (GPT-2 BPE, 50k tokens) or "char"
+tokenizer = "tiktoken"  # "tiktoken" (GPT-2 BPE, 50k tokens), "bpe" (corpus-trained), or "char"
+bpe_vocab_size = 4096   # target vocab size when tokenizer = "bpe"
 model_name = "model"
 model_path = "trained/model.pt"
 
