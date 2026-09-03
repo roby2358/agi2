@@ -1,3 +1,11 @@
+Priority:   90
+Status: ToDo
+ID: eot-token-azmi
+Created: 2026-09-03T19:31:16Z
+Updated: 2026-09-03T19:36:23Z
+
+agi2/semantic: register special tokens <|endoftext|>, <|break|>, and <|pad|> in BPETokenizer alongside the existing <EOS> (special_tokens list in BpeTrainer, plus the vocab dict built in fit() and load_vocab()). <|endoftext|> already appears literally ~31.6k times in samples/shakespeare_dialogue.txt but currently tokenizes as ordinary subwords (<| + endoftext + |>), so models learn to emit the text yet generation never stops on it — generation only breaks on <EOS>, which never occurs in training data. Once registered it encodes atomically and the model trains on the real token. <|break|> (future intra-document structure) and <|pad|> (future variable-length batching + loss masking) are reserved only — not emitted or consumed anywhere yet. Update src/generation.py to stop sampling on a set of stop-token ids (<EOS> and <|endoftext|>) instead of the single eos id, in both generate_text and generate_with_beam_search, and let the stop tokens through build_corpus_token_mask (never <|pad|>/<|break|>). Decode cleanup, same change: special tokens belong in the token set and in training, but must not appear in returned inference text — strip them at the generation boundary (skip_special_tokens=True on decode of generated output, or strip the trailing marker), so callers never see literal <EOS>/<|endoftext|> in results. Update tests/test_bpe_tokenizer.py and tests/test_generation.py. Note: tokenizer changes take effect only after a tokenizer re-fit + retrain (e.g. resources/lilwill_rwkv.toml); the existing trained/lilwill_rwkv.pt keeps its old 3-subword encoding.
+----
 Priority:   87
 Status: ToDo
 ID: primer-39nj
@@ -157,6 +165,14 @@ ID: api-zbgu
 
 Implement HTTP API server for model inference and training management
 ----
+Priority:   60
+Status: ToDo
+ID: seq-bounds-v5yr
+Created: 2026-09-03T19:36:29Z
+Updated: 2026-09-03T19:36:29Z
+
+agi2/semantic: dataset-level boundary handling. TextDataset (src/dataset.py) slices training sequences blindly across utterance/document boundaries, so windows regularly straddle two unrelated utterances (the shakespeare_dialogue.txt corpus is ~31.6k utterances each terminated by <|endoftext|>). Once <|endoftext|> is a registered atomic special token, make the dataset boundary-aware: at minimum verify the marker survives as a single token in training sequences; better, align sequence starts to utterance boundaries so each window begins at the start of an utterance rather than mid-sentence (option: prevent windows from crossing a boundary, or accept crossing but always start on one). Consider making the behavior a TOML config flag. If variable-length sequences result, pad with the reserved <|pad|> token and mask padding out of the cosine-similarity loss. Requires the special-token registration work to land first; takes effect on the next retrain. Update tests/test_dataset.py.
+----
 Priority:   58
 Status: ToDo
 ID: mcp-cn3h
@@ -176,6 +192,14 @@ Created: 2026-09-03T08:29:05Z
 Updated: 2026-09-03T08:29:05Z
 
 Add an inference-time frequency penalty to text generation in semantic/src/generation.py. Before sampling in generate_text, subtract penalty * count from each token's cosine-similarity score, where count is the number of times that token already appears in the generated output (not the prompt). Add a repetition_penalty TOML parameter (default 0.0 = off) read by the generation entry scripts and passed through generate_text; apply it after the corpus-vocab allowed_mask and before top-k/top-p. Cosine scores are bounded in [-1,1] before the temperature divide, so document a suggested range around 0.3-0.5 at temperature 0.3. Optionally also support no_repeat_ngram_size (default 0 = off) to hard-ban tokens completing an already-generated n-gram. Add unit tests (a penalized token's score drops proportionally to its count; disabled by default) and keep black/isort/mypy clean.
+----
+Priority:   50
+Status: ToDo
+ID: beam-stop-bmj4
+Created: 2026-09-03T19:36:33Z
+Updated: 2026-09-03T19:36:33Z
+
+agi2/semantic: fix beam-search stop semantics in src/generation.py generate_with_beam_search. Current behavior: the loop breaks only when ALL beams have a stop token as their final token on the SAME step, and beams that hit a stop token keep being extended with more tokens on later steps — so a beam that finished cleanly gets junk appended unless every other beam finishes simultaneously, which almost never happens; in practice beam search runs to max_length and returns beams with text after their end markers. Standard fix: when a beam's last token is a stop token, freeze it (keep it as a completed candidate, do not extend it further; carry it forward in the beam list with its score, optionally length-normalized), keep expanding only unfinished beams, and stop when all beam_width beams are frozen or max_length is reached. Return completed beams truncated at their stop token. Update tests/test_generation.py with a case where one beam finishes before the others.
 ----
 Priority:   46
 Status: ToDo
