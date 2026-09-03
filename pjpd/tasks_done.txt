@@ -1,0 +1,133 @@
+Priority:   55
+Status: Done
+ID: bpe-ys58
+Created: 2026-09-03T08:23:57Z
+Updated: 2026-09-03T08:23:57Z
+
+Implement byte-pair encoding tokenizer for text processing
+----
+Priority:    0
+Status: Done
+ID: fix-warn-429d
+
+Fix the warning message that comes with each generation
+----
+Priority:    0
+Status: Done
+ID: toml-sources-572x
+
+Model TOML supports a list of sources that the training script uses
+----
+Priority:    0
+Status: Done
+ID: corpus01-fzfq
+
+Build corpus01.txt: Formal Logic & Mathematical Reasoning content
+----
+Priority:    0
+Status: Done
+ID: skeleton-emq9
+
+Write skeleton for runtime project - create directory structure, empty files, and basic imports for all components
+----
+Priority:    0
+Status: Done
+ID: interactive-q9kj
+
+Implement InteractivePrompt class for interactive conversation management with context window building
+----
+Priority:    0
+Status: Done
+ID: serialize-hnyf
+
+Implement model serialization (save/load) with configuration preservation
+----
+Priority:    0
+Status: Done
+ID: main-7dye
+
+Create main training script that takes corpus file path as command line argument
+----
+Priority:    0
+Status: Done
+ID: generate-h7a3
+
+Add text generation function with temperature and max_length parameters
+----
+Priority:    0
+Status: Done
+ID: training-zyhg
+
+Implement training loop: forward pass, loss calculation, backpropagation
+----
+Priority:    0
+Status: Done
+ID: data-nkyd
+
+Create data loading pipeline: read text file, tokenize, create training batches
+----
+Priority:    0
+Status: Done
+ID: loss-opt-cf66
+
+Implement loss function (cross-entropy) and optimizer setup for training
+----
+Priority:    0
+Status: Done
+ID: train-aaab
+
+Create simple training function that takes text and epochs
+----
+Priority:    0
+Status: Done
+ID: tokenizer-aaac
+
+Implement basic text tokenization
+----
+Priority:    0
+Status: Done
+ID: ffn-mw74
+
+Implement FeedForward class with GELU activation, dropout, and proper dimensions
+----
+Priority:    0
+Status: Done
+ID: attention-d5cv
+
+Implement MultiHeadAttention class with scaled dot-product attention and causal masking
+----
+Priority:    0
+Status: Done
+ID: embeddings-hvqe
+
+Implement TokenEmbeddings and PositionEmbeddings classes with proper initialization and forward methods
+----
+Priority:    0
+Status: Done
+ID: transformer-dgts
+
+Implement TransformerBlock class combining attention and feed-forward layers
+----
+Priority:    0
+Status: Done
+ID: model-aaaa
+
+Implement AGI2Model class with configurable architecture and forward pass
+----
+Priority:    0
+Status: Done
+ID: config-yurt
+
+Implement AGI2Config class for model configuration management
+----
+Priority:    0
+Status: Done
+ID: readme-a7dk
+
+Refactor README to focus on single AGI-2 model implementation instead of broad framework
+----
+Priority:    0
+Status: Done
+ID: spec-un2j
+
+Flesh out SPEC.md with detailed implementation requirements in MUST/SHOULD/MAY format
