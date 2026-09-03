@@ -169,6 +169,14 @@ ID: ngram-tok-pei4
 
 Implement an n-gram encoding tokenizer
 ----
+Priority:   50
+Status: ToDo
+ID: freq-penalty-k9b2
+Created: 2026-09-03T08:29:05Z
+Updated: 2026-09-03T08:29:05Z
+
+Add an inference-time frequency penalty to text generation in semantic/src/generation.py. Before sampling in generate_text, subtract penalty * count from each token's cosine-similarity score, where count is the number of times that token already appears in the generated output (not the prompt). Add a repetition_penalty TOML parameter (default 0.0 = off) read by the generation entry scripts and passed through generate_text; apply it after the corpus-vocab allowed_mask and before top-k/top-p. Cosine scores are bounded in [-1,1] before the temperature divide, so document a suggested range around 0.3-0.5 at temperature 0.3. Optionally also support no_repeat_ngram_size (default 0 = off) to hard-ban tokens completing an already-generated n-gram. Add unit tests (a penalized token's score drops proportionally to its count; disabled by default) and keep black/isort/mypy clean.
+----
 Priority:   46
 Status: ToDo
 ID: quant-ptq-zaqs
