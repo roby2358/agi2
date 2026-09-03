@@ -8,12 +8,54 @@ embedding matrix to produce token scores, rather than raw logits. This matches
 the cosine similarity training objective.
 """
 
-from typing import List
+import os
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
 
 from .basic_tokenizer import BasicTokenizer
+
+
+def build_corpus_token_mask(
+    sources: List[str],
+    tokenizer: BasicTokenizer,
+    vocab_size: int,
+    device: str,
+) -> Optional[torch.Tensor]:
+    """Build a boolean vocab mask marking tokens that appear in the corpus.
+
+    Tokens outside the training corpus keep their random-init embeddings, so
+    cosine-similarity scoring can pick them spuriously. Masking generation to
+    corpus tokens (plus <EOS>) avoids that without retraining.
+
+    Missing source files are skipped with a warning. Returns None if no
+    corpus tokens could be collected.
+    """
+    allowed = torch.zeros(vocab_size, dtype=torch.bool, device=device)
+    found_any = False
+
+    for source_path in sources:
+        if not os.path.exists(source_path):
+            print(f"Warning: corpus source not found, skipping: {source_path}")
+            continue
+        with open(source_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        token_ids = sorted(set(tokenizer.encode(text)))
+        if token_ids:
+            ids = torch.tensor(token_ids, dtype=torch.long, device=device)
+            allowed[ids] = True
+            found_any = True
+
+    if not found_any:
+        print("Warning: no corpus tokens found; generation is unrestricted")
+        return None
+
+    eos_id = tokenizer.vocab.get("<EOS>", -1)
+    if 0 <= eos_id < vocab_size:
+        allowed[eos_id] = True
+
+    return allowed
 
 
 def _hidden_to_scores(
@@ -40,6 +82,7 @@ def _hidden_to_scores(
 
 def _apply_top_k(scores: torch.Tensor, top_k: int) -> torch.Tensor:
     """Zero out all but the top-k scoring tokens."""
+    top_k = min(top_k, scores.size(0))
     top_k_scores, top_k_indices = torch.topk(scores, top_k)
     filtered = torch.full_like(scores, -float("inf"))
     filtered[top_k_indices] = top_k_scores
@@ -69,6 +112,7 @@ def generate_text(
     top_p: float,
     tokenizer: BasicTokenizer,
     device: str,
+    allowed_mask: Optional[torch.Tensor] = None,
 ) -> str:
     """
     Generate text from a prompt using cosine similarity scoring.
@@ -82,6 +126,8 @@ def generate_text(
         top_p: Top-p (nucleus) sampling parameter
         tokenizer: Tokenizer for encoding/decoding
         device: Device to run generation on
+        allowed_mask: Optional (vocab_size,) bool mask; tokens outside it
+            are never generated (see build_corpus_token_mask)
 
     Returns:
         Generated text string
@@ -98,6 +144,9 @@ def generate_text(
     with torch.inference_mode():
         for _ in range(max_length):
             scores = _hidden_to_scores(model, generated_ids, temperature)
+
+            if allowed_mask is not None:
+                scores = scores.masked_fill(~allowed_mask, -float("inf"))
 
             scores = _apply_top_k(scores, top_k)
             scores = _apply_top_p(scores, top_p)
@@ -121,6 +170,7 @@ def generate_with_beam_search(
     temperature: float,
     tokenizer: BasicTokenizer,
     device: str,
+    allowed_mask: Optional[torch.Tensor] = None,
 ) -> List[str]:
     """
     Generate text using beam search with cosine similarity scoring.
@@ -152,7 +202,11 @@ def generate_with_beam_search(
 
             for beam_seq, beam_score in beams:
                 scores = _hidden_to_scores(model, beam_seq, temperature)
-                top_scores, top_indices = torch.topk(scores, beam_width)
+                if allowed_mask is not None:
+                    scores = scores.masked_fill(~allowed_mask, -float("inf"))
+                top_scores, top_indices = torch.topk(
+                    scores, min(beam_width, scores.size(0))
+                )
 
                 for score_val, token_id in zip(top_scores, top_indices):
                     new_seq = torch.cat(
@@ -175,6 +229,7 @@ def generate_interactive(
     max_length: int,
     temperature: float,
     device: str,
+    allowed_mask: Optional[torch.Tensor] = None,
 ) -> None:
     """
     Interactive text generation loop.
@@ -185,6 +240,8 @@ def generate_interactive(
         max_length: Maximum length of generated text
         temperature: Sampling temperature
         device: Device to run generation on
+        allowed_mask: Optional (vocab_size,) bool mask restricting output
+            to corpus tokens
     """
     print("Interactive text generation (type 'quit' to exit)")
     print("=" * 50)
@@ -210,6 +267,7 @@ def generate_interactive(
                 0.9,
                 tokenizer,
                 device,
+                allowed_mask,
             )
 
             print(f"\nGenerated text:\n{generated_text}")

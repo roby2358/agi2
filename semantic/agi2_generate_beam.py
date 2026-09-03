@@ -10,9 +10,9 @@ from pathlib import Path
 
 from src.basic_tokenizer import BasicTokenizer
 from src.config import AGI2Config
-from src.config_loader import get_config_value, load_config
+from src.config_loader import get_config_value, get_sources_list, load_config
 from src.cuda_utils import check_cuda_availability, get_optimal_device
-from src.generation import generate_with_beam_search
+from src.generation import build_corpus_token_mask, generate_with_beam_search
 from src.model import AGI2Model
 from src.model_io import load_model_and_tokenizer
 
@@ -49,6 +49,16 @@ def main(model_cls=AGI2Model):
     model, tokenizer = load_model_and_tokenizer(model_path, device, model_cls)
     print(f"Model config: {model.config}")
 
+    vocab_size = model.token_embeddings.embedding.num_embeddings
+    allowed_mask = build_corpus_token_mask(
+        get_sources_list(config), tokenizer, vocab_size, device
+    )
+    if allowed_mask is not None:
+        print(
+            f"Restricting generation to {int(allowed_mask.sum())} "
+            f"corpus tokens (of {vocab_size})"
+        )
+
     full_prompt = model_seed + prompt if model_seed else prompt
     print(f"Prompt: {len(full_prompt)} characters")
     print(f"Max length: {max_length}, Beam size: {beam_size}")
@@ -62,6 +72,7 @@ def main(model_cls=AGI2Model):
         temperature,
         tokenizer,
         device,
+        allowed_mask,
     )
 
     print("Generated text (beam search):")
