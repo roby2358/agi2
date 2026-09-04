@@ -22,6 +22,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
 
 from .config import AGI2Config
 from .embeddings import TokenEmbeddings
@@ -96,6 +97,14 @@ class RWKVTimeMix(nn.Module):
         loop's. The per-step loop launched ~10 tiny CUDA kernels per timestep,
         making training kernel-launch-bound; chunking batches that work.
 
+        Each chunk's forward is gradient-checkpointed during training: only
+        the chunk inputs are kept and the (B, c, c, D) intermediates are
+        recomputed in backward. Without this, the saved intermediates ran
+        ~60MB x several per chunk x chunks x layers (~15GB at the training
+        token budget), overflowing 24GB of VRAM into the driver's system
+        memory fallback — the run then crawled at ~5s/batch on 108W
+        (2026-09-04). Recomputing a 16-step chunk is trivial GPU work.
+
         Runs in float32 regardless of input dtype.
 
         Args:
@@ -109,56 +118,90 @@ class RWKVTimeMix(nn.Module):
         dtype = k.dtype
         k = k.float()
         v = v.float()
-        w = -torch.exp(self.time_decay.float())
-        u = self.time_first.float()
 
         aa = k.new_zeros(batch_size, d_model)  # weighted sum of values
         bb = k.new_zeros(batch_size, d_model)  # sum of weights
         pp = k.new_full((batch_size, d_model), -1e38)  # state exponent
-        neg_inf = float("-inf")
         outputs: List[torch.Tensor] = []
 
+        use_checkpoint = torch.is_grad_enabled() and (
+            k.requires_grad or self.time_decay.requires_grad
+        )
         for start in range(0, seq_len, self.wkv_chunk_size):
             kc = k[:, start : start + self.wkv_chunk_size]  # (B, c, D)
             vc = v[:, start : start + self.wkv_chunk_size]
-            c = kc.size(1)
-            steps = torch.arange(c, device=k.device, dtype=torch.float32)
-
-            # Exponent of the incoming state's contribution to output j:
-            # the state decays j steps into the chunk.
-            state_exp = pp.unsqueeze(1) + steps.view(1, c, 1) * w  # (B, c, D)
-            # Within-chunk history: output j sums e^{(j-1-i)w + k_i} v_i over
-            # i < j. gaps[j, i] = j - 1 - i; entries with i >= j are masked.
-            gaps = steps.view(c, 1) - 1.0 - steps.view(1, c)  # (c, c)
-            alpha = gaps.unsqueeze(-1) * w + kc.unsqueeze(1)  # (B, c, c, D)
-            alpha = alpha.masked_fill((gaps < 0).view(1, c, c, 1), neg_inf)
-            # Current token's bonus term, always finite — so the max is too.
-            bonus = u + kc  # (B, c, D)
-
-            m = torch.maximum(torch.maximum(alpha.amax(dim=2), state_exp), bonus)
-            hist = torch.exp(alpha - m.unsqueeze(2))  # exp(-inf) = 0 where masked
-            e_bonus = torch.exp(bonus - m)
-            e_state = torch.exp(state_exp - m)
-            num = (
-                (hist * vc.unsqueeze(1)).sum(dim=2)
-                + e_bonus * vc
-                + aa.unsqueeze(1) * e_state
-            )
-            den = hist.sum(dim=2) + e_bonus + bb.unsqueeze(1) * e_state
-            outputs.append(num / den)
-
-            # Carry the state to the chunk's end: the incoming state decays c
-            # steps and every key in the chunk decays to the last position.
-            beta = (c - 1.0 - steps).view(1, c, 1) * w + kc  # (B, c, D)
-            state_end = pp + c * w
-            p_new = torch.maximum(state_end, beta.amax(dim=1))
-            e_carry = torch.exp(state_end - p_new)
-            e_beta = torch.exp(beta - p_new.unsqueeze(1))
-            aa = aa * e_carry + (e_beta * vc).sum(dim=1)
-            bb = bb * e_carry + e_beta.sum(dim=1)
-            pp = p_new
+            if use_checkpoint:
+                out, aa, bb, pp = torch.utils.checkpoint.checkpoint(
+                    self._wkv_chunk, kc, vc, aa, bb, pp, use_reentrant=False
+                )
+            else:
+                out, aa, bb, pp = self._wkv_chunk(kc, vc, aa, bb, pp)
+            outputs.append(out)
 
         return torch.cat(outputs, dim=1).to(dtype)
+
+    def _wkv_chunk(
+        self,
+        kc: torch.Tensor,
+        vc: torch.Tensor,
+        aa: torch.Tensor,
+        bb: torch.Tensor,
+        pp: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """One chunk of the WKV recurrence: outputs plus the carried state.
+
+        Kept as a standalone method so _wkv can gradient-checkpoint it. w and
+        u derive from the time parameters inside the chunk on purpose — the
+        recompute is trivial and keeps the checkpoint inputs to plain tensors.
+
+        Args:
+            kc: Chunk keys of shape (batch_size, c, d_model)
+            vc: Chunk values of shape (batch_size, c, d_model)
+            aa: Incoming weighted value sum, shape (batch_size, d_model)
+            bb: Incoming weight sum, shape (batch_size, d_model)
+            pp: Incoming state exponent, shape (batch_size, d_model)
+
+        Returns:
+            Tuple of (outputs (batch_size, c, d_model), aa, bb, pp).
+        """
+        c = kc.size(1)
+        w = -torch.exp(self.time_decay.float())
+        u = self.time_first.float()
+        steps = torch.arange(c, device=kc.device, dtype=torch.float32)
+
+        # Exponent of the incoming state's contribution to output j:
+        # the state decays j steps into the chunk.
+        state_exp = pp.unsqueeze(1) + steps.view(1, c, 1) * w  # (B, c, D)
+        # Within-chunk history: output j sums e^{(j-1-i)w + k_i} v_i over
+        # i < j. gaps[j, i] = j - 1 - i; entries with i >= j are masked.
+        gaps = steps.view(c, 1) - 1.0 - steps.view(1, c)  # (c, c)
+        alpha = gaps.unsqueeze(-1) * w + kc.unsqueeze(1)  # (B, c, c, D)
+        alpha = alpha.masked_fill((gaps < 0).view(1, c, c, 1), float("-inf"))
+        # Current token's bonus term, always finite — so the max is too.
+        bonus = u + kc  # (B, c, D)
+
+        m = torch.maximum(torch.maximum(alpha.amax(dim=2), state_exp), bonus)
+        hist = torch.exp(alpha - m.unsqueeze(2))  # exp(-inf) = 0 where masked
+        e_bonus = torch.exp(bonus - m)
+        e_state = torch.exp(state_exp - m)
+        num = (
+            (hist * vc.unsqueeze(1)).sum(dim=2)
+            + e_bonus * vc
+            + aa.unsqueeze(1) * e_state
+        )
+        den = hist.sum(dim=2) + e_bonus + bb.unsqueeze(1) * e_state
+        out = num / den
+
+        # Carry the state to the chunk's end: the incoming state decays c
+        # steps and every key in the chunk decays to the last position.
+        beta = (c - 1.0 - steps).view(1, c, 1) * w + kc  # (B, c, D)
+        state_end = pp + c * w
+        p_new = torch.maximum(state_end, beta.amax(dim=1))
+        e_carry = torch.exp(state_end - p_new)
+        e_beta = torch.exp(beta - p_new.unsqueeze(1))
+        aa = aa * e_carry + (e_beta * vc).sum(dim=1)
+        bb = bb * e_carry + e_beta.sum(dim=1)
+        return out, aa, bb, p_new
 
     def _wkv_loop(self, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """Per-step reference WKV recurrence (the original implementation).

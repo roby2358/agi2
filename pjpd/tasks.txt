@@ -140,12 +140,24 @@ Build corpus20.txt: Rhetorical Melee Drills content
 A free-flowing, dynamic exchange of arguments and counter-arguments
 ----
 Priority:   70
-Status: ToDo
+Status: Done
 ID: wkv-chunked-un6i
 Created: 2026-09-02T06:38:54Z
-Updated: 2026-09-02T06:38:54Z
+Updated: 2026-09-04T15:40:00Z
 
 Rewrite the RWKV WKV recurrence in semantic/src/rwkv.py (_wkv, currently a Python `for t in range(seq_len)` loop) as a chunked scan: process blocks of timesteps with batched tensor ops instead of one step at a time, carrying the (numerically stable, log-space max-tracking) state between chunks. The current loop launches ~10 tiny CUDA kernels per timestep, so training is kernel-launch-bound — one CPU core pegged, RTX 4090 at ~240W/450W despite 90% reported utilization. Must preserve the stable WKV formulation (float32 internals, max-shift trick), keep mypy strict clean, and produce outputs matching the loop implementation within float tolerance (add a unit test comparing chunked vs. naive on random inputs). Verify GPU-side speedup with a before/after timing of one epoch of lilwill_rwkv.
+
+OUTCOME (2026-09-04, commit 217c7cf): implemented and equivalence-tested (outputs + gradients match the loop, kept as _wkv_loop). GPU verification at epoch 48/seq 244: 353.02s (loop, 11,252 seqs) vs 294.74s (chunked, 9,170 aligned seqs) — 31.4 vs 32.1 ms/seq, i.e. PERFORMANCE-NEUTRAL per sequence; the wall gain was seq-bounds-v5yr's fewer sequences. Finding: cutting WKV launches ~16x did not move per-batch time (~5s, and roughly CONSTANT across seq 151 vs 244), so training was never WKV-launch-bound. The real bottleneck is seq-independent and unidentified — see train-profile task.
+----
+Priority:   70
+Status: ToDo
+ID: train-prof-e7qd
+Created: 2026-09-04T15:45:00Z
+Updated: 2026-09-04T15:45:00Z
+
+agi2/semantic: find the real training bottleneck. Evidence (2026-09-04, RTX 4090, lilwill_rwkv 13M params): per-batch fwd+bwd time is ~5s and roughly CONSTANT across sequence lengths (epoch 30 seq=151 batch=244: 345.8s/~61 batches; epoch 48 seq=244 batch=151: 294.7s/~61 batches), and was unchanged by cutting WKV kernel launches ~16x (chunked scan, commit 217c7cf) — so the cost is seq-independent and not WKV or the pairwise cosine loss (which samples index pairs, cheap).
+
+ROOT CAUSE FOUND (2026-09-04): nvidia-smi during training showed 24,058/24,564 MiB used at only 108W — the chunked WKV's autograd intermediates (several (B,c,c,D) tensors per chunk) measured 14.58GB saved-for-backward across 6 layers at the training token budget (saved_tensors_hooks measurement), overflowing VRAM into the Windows driver's system-memory fallback; every touch of spilled pages crosses PCIe, giving the flat ~5s/batch. B x seq is constant by the token-budget design, which is why the cost never varied with seq. FIX: per-chunk gradient checkpointing in _wkv (recompute the chunk forward in backward) cuts saved bytes to 0.75GB (19x); equivalence tests still pass through the checkpointed path. Remaining: user restarts training with the fix and reports the new epoch time to confirm the speedup (expected several-x; the old loop's separate CPU-launch bottleneck is also gone). NOTE the old loop was a DIFFERENT ~5s/batch bottleneck (CPU launch overhead at 240W, core pegged) — two causes, coincidentally similar cost.
 ----
 Priority:   70
 Status: ToDo
