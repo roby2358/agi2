@@ -38,6 +38,14 @@ early_stop_patience = 20
 # tokenizer defines that token; otherwise stride starts are used unchanged.
 align_sequences = true
 
+# Generation anti-repetition. repetition_penalty is subtracted from a
+# token's cosine-similarity score once per prior occurrence in the
+# generated output (cosine scores span [-1, 1]; suggested 0.3-0.5 at
+# temperature 0.3; 0.0 = off). no_repeat_ngram_size hard-bans any token
+# that would complete an n-gram already generated (0 = off).
+repetition_penalty = 0.0
+no_repeat_ngram_size = 0
+
 # Performance
 use_compile = false  # torch.compile() for fused kernels
 use_amp = false      # Automatic mixed precision (CUDA only)

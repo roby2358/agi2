@@ -35,6 +35,8 @@ def main(model_cls=AGI2Model):
     max_length = get_config_value(config, "max_length", 100)
     temperature = get_config_value(config, "temperature", 0.8)
     device_choice = get_config_value(config, "device", "auto")
+    repetition_penalty = get_config_value(config, "repetition_penalty", 0.0)
+    no_repeat_ngram_size = get_config_value(config, "no_repeat_ngram_size", 0)
 
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
@@ -63,6 +65,8 @@ def main(model_cls=AGI2Model):
         temperature,
         device,
         allowed_mask,
+        repetition_penalty=repetition_penalty,
+        no_repeat_ngram_size=no_repeat_ngram_size,
     )
 
 

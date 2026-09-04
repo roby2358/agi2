@@ -7,7 +7,9 @@ from src.bpe_tokenizer import BPETokenizer
 from src.generation import (
     SPECIAL_TOKEN_NAMES,
     STOP_TOKEN_NAMES,
+    _apply_repetition_penalty,
     _apply_top_k,
+    _ban_repeated_ngrams,
     _decode_stripped,
     _token_ids,
     build_corpus_token_mask,
@@ -140,6 +142,98 @@ class TestStopAndSpecialTokens:
 
     def test_special_names_are_superset_of_stop_names(self):
         assert set(STOP_TOKEN_NAMES) <= set(SPECIAL_TOKEN_NAMES)
+
+
+@pytest.mark.unit
+class TestRepetitionPenalty:
+    def test_score_drops_proportionally_to_count(self):
+        scores = torch.zeros(4)
+        counts = torch.tensor([0.0, 1.0, 2.0, 3.0])
+        out = _apply_repetition_penalty(scores, counts, 0.3, 0.3)
+        # penalty * count / temperature: 0.3/0.3 = 1.0 per occurrence
+        assert torch.allclose(out, torch.tensor([0.0, -1.0, -2.0, -3.0]))
+
+    def test_zero_counts_leave_scores_unchanged(self):
+        scores = torch.randn(8)
+        out = _apply_repetition_penalty(scores, torch.zeros(8), 0.5, 0.3)
+        assert torch.equal(out, scores)
+
+    def test_ngram_ban_masks_completing_token(self):
+        # Sequence contains trigram (1, 2, 3); with the last two tokens
+        # being (1, 2) again, token 3 must be banned.
+        scores = torch.zeros(5)
+        out = _ban_repeated_ngrams(scores, [1, 2, 3, 4, 1, 2], 3)
+        assert out[3] == -float("inf")
+        assert torch.isfinite(out[[0, 1, 2, 4]]).all()
+
+    def test_ngram_ban_skipped_when_it_would_ban_everything(self):
+        # Tiny vocab where the ban would eliminate the only finite score:
+        # better a repeat than no sample at all.
+        scores = torch.full((3,), -float("inf"))
+        scores[2] = 1.0
+        out = _ban_repeated_ngrams(scores, [0, 1, 2, 0, 1], 3)
+        assert torch.isfinite(out[2])
+
+    def test_ngram_ban_off_by_default_size(self):
+        scores = torch.zeros(5)
+        assert torch.equal(_ban_repeated_ngrams(scores, [1, 2, 3, 1, 2], 0), scores)
+
+    def test_generation_stops_stuttering_under_penalty(self):
+        # A stub model whose hidden state always matches token 5's
+        # embedding: unpenalized sampling at low temperature repeats 5
+        # forever; the penalty must force diversity.
+        class StubModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.token_embeddings = torch.nn.modules.container.ModuleDict()
+                emb = torch.nn.Embedding(10, 4)
+                with torch.no_grad():
+                    emb.weight.copy_(torch.eye(10, 4))
+                    emb.weight[5] = torch.tensor([1.0, 1.0, 1.0, 1.0])
+                holder = torch.nn.Module()
+                holder.embedding = emb
+                self.token_embeddings = holder
+
+            def _run_transformer(self, ids):
+                b, t = ids.shape
+                return torch.ones(b, t, 4)
+
+            def to(self, device):
+                return self
+
+            def eval(self):
+                return self
+
+        class StubTokenizer:
+            vocab = {"<EOS>": 0}
+            vocab_size = 10
+
+            def encode(self, text):
+                return [1]
+
+            def decode(self, ids):
+                return " ".join(str(i) for i in ids)
+
+        torch.manual_seed(0)
+        stuttered = generate_text(
+            StubModel(), "x", 20, 0.05, 3, 1.0, StubTokenizer(), "cpu"
+        )
+        torch.manual_seed(0)
+        penalized = generate_text(
+            StubModel(),
+            "x",
+            20,
+            0.05,
+            3,
+            1.0,
+            StubTokenizer(),
+            "cpu",
+            repetition_penalty=2.0,
+        )
+        stuttered_counts = stuttered.split().count("5")
+        penalized_counts = penalized.split().count("5")
+        assert stuttered_counts > 15  # the stub really does stutter
+        assert penalized_counts < stuttered_counts / 2
 
 
 @pytest.mark.unit

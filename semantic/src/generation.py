@@ -104,6 +104,49 @@ def _hidden_to_scores(
     return scores / temperature
 
 
+def _apply_repetition_penalty(
+    scores: torch.Tensor,
+    counts: torch.Tensor,
+    penalty: float,
+    temperature: float,
+) -> torch.Tensor:
+    """Subtract penalty x count from each token's cosine-similarity score.
+
+    `counts` holds how many times each token already appears in the GENERATED
+    output (the prompt is not counted). The penalty is expressed in raw
+    cosine-score units — scores here are already divided by temperature, so
+    the subtraction is scaled the same way. Cosine scores are bounded in
+    [-1, 1] before the temperature divide; a penalty around 0.3-0.5 at
+    temperature 0.3 pushes a once-seen token below fresh alternatives.
+    """
+    return scores - (penalty * counts) / temperature
+
+
+def _ban_repeated_ngrams(
+    scores: torch.Tensor, token_ids: List[int], n: int
+) -> torch.Tensor:
+    """Ban tokens that would complete an n-gram already in the sequence.
+
+    Finds every historical occurrence of the sequence's last n-1 tokens and
+    masks the token that followed each one. If the ban would eliminate every
+    remaining candidate, it is skipped — better a repeat than no sample.
+    """
+    if n <= 0 or len(token_ids) < n:
+        return scores
+    prefix = token_ids[-(n - 1) :] if n > 1 else []
+    banned = set()
+    for i in range(len(token_ids) - n + 1):
+        if token_ids[i : i + n - 1] == prefix:
+            banned.add(token_ids[i + n - 1])
+    if not banned:
+        return scores
+    result = scores.clone()
+    result[list(banned)] = -float("inf")
+    if torch.isinf(result).all():
+        return scores
+    return result
+
+
 def _apply_top_k(scores: torch.Tensor, top_k: int) -> torch.Tensor:
     """Zero out all but the top-k scoring tokens."""
     top_k = min(top_k, scores.size(0))
@@ -137,6 +180,8 @@ def generate_text(
     tokenizer: BasicTokenizer,
     device: str,
     allowed_mask: Optional[torch.Tensor] = None,
+    repetition_penalty: float = 0.0,
+    no_repeat_ngram_size: int = 0,
 ) -> str:
     """
     Generate text from a prompt using cosine similarity scoring.
@@ -152,6 +197,11 @@ def generate_text(
         device: Device to run generation on
         allowed_mask: Optional (vocab_size,) bool mask; tokens outside it
             are never generated (see build_corpus_token_mask)
+        repetition_penalty: Cosine-score units subtracted per prior
+            occurrence of a token in the generated output (0.0 = off;
+            suggested 0.3-0.5 at temperature 0.3)
+        no_repeat_ngram_size: Hard-ban tokens completing an n-gram already
+            in the sequence (0 = off)
 
     Returns:
         Generated text string
@@ -164,6 +214,7 @@ def generate_text(
     generated_ids = input_ids.clone()
 
     stop_ids = _token_ids(tokenizer, STOP_TOKEN_NAMES)
+    counts: Optional[torch.Tensor] = None
 
     with torch.inference_mode():
         for _ in range(max_length):
@@ -172,6 +223,17 @@ def generate_text(
             if allowed_mask is not None:
                 scores = scores.masked_fill(~allowed_mask, -float("inf"))
 
+            if repetition_penalty > 0.0:
+                if counts is None:
+                    counts = torch.zeros_like(scores)
+                scores = _apply_repetition_penalty(
+                    scores, counts, repetition_penalty, temperature
+                )
+            if no_repeat_ngram_size > 0:
+                scores = _ban_repeated_ngrams(
+                    scores, generated_ids[0].tolist(), no_repeat_ngram_size
+                )
+
             scores = _apply_top_k(scores, top_k)
             scores = _apply_top_p(scores, top_p)
 
@@ -179,8 +241,11 @@ def generate_text(
             next_token = torch.multinomial(probs, num_samples=1)
 
             generated_ids = torch.cat([generated_ids, next_token.unsqueeze(0)], dim=1)
+            sampled = int(next_token.item())
+            if counts is not None:
+                counts[sampled] += 1
 
-            if next_token.item() in stop_ids:
+            if sampled in stop_ids:
                 break
 
     return _decode_stripped(tokenizer, generated_ids[0].tolist())
@@ -254,6 +319,8 @@ def generate_interactive(
     temperature: float,
     device: str,
     allowed_mask: Optional[torch.Tensor] = None,
+    repetition_penalty: float = 0.0,
+    no_repeat_ngram_size: int = 0,
 ) -> None:
     """
     Interactive text generation loop.
@@ -266,6 +333,10 @@ def generate_interactive(
         device: Device to run generation on
         allowed_mask: Optional (vocab_size,) bool mask restricting output
             to corpus tokens
+        repetition_penalty: Cosine-score units subtracted per prior
+            occurrence of a generated token (0.0 = off)
+        no_repeat_ngram_size: Hard-ban tokens completing a repeated n-gram
+            (0 = off)
     """
     print("Interactive text generation (type 'quit' to exit)")
     print("=" * 50)
@@ -292,6 +363,8 @@ def generate_interactive(
                 tokenizer,
                 device,
                 allowed_mask,
+                repetition_penalty=repetition_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
             )
 
             print(f"\nGenerated text:\n{generated_text}")

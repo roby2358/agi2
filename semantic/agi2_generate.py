@@ -37,6 +37,8 @@ def main(model_cls=AGI2Model):
     temperature = get_config_value(config, "temperature", 0.8)
     device_choice = get_config_value(config, "device", "auto")
     model_seed = get_config_value(config, "model_seed", "")
+    repetition_penalty = get_config_value(config, "repetition_penalty", 0.0)
+    no_repeat_ngram_size = get_config_value(config, "no_repeat_ngram_size", 0)
 
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
@@ -60,7 +62,11 @@ def main(model_cls=AGI2Model):
 
     full_prompt = model_seed + prompt if model_seed else prompt
     print(f"Prompt: {len(full_prompt)} characters")
-    print(f"Max length: {max_length}, Temperature: {temperature}")
+    print(
+        f"Max length: {max_length}, Temperature: {temperature}, "
+        f"Repetition penalty: {repetition_penalty}, "
+        f"No-repeat ngram: {no_repeat_ngram_size}"
+    )
     print("-" * 50)
 
     generated_text = generate_text(
@@ -73,6 +79,8 @@ def main(model_cls=AGI2Model):
         tokenizer,
         device,
         allowed_mask,
+        repetition_penalty=repetition_penalty,
+        no_repeat_ngram_size=no_repeat_ngram_size,
     )
 
     print("Generated text:")
