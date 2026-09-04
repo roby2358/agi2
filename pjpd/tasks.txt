@@ -166,10 +166,10 @@ ID: api-zbgu
 Implement HTTP API server for model inference and training management
 ----
 Priority:   60
-Status: ToDo
+Status: Done
 ID: seq-bounds-v5yr
 Created: 2026-09-03T19:36:29Z
-Updated: 2026-09-03T19:36:29Z
+Updated: 2026-09-04T07:55:00Z
 
 agi2/semantic: dataset-level boundary handling. TextDataset (src/dataset.py) slices training sequences blindly across utterance/document boundaries, so windows regularly straddle two unrelated utterances (the shakespeare_dialogue.txt corpus is ~31.6k utterances each terminated by <|endoftext|>). Once <|endoftext|> is a registered atomic special token, make the dataset boundary-aware: at minimum verify the marker survives as a single token in training sequences; better, align sequence starts to utterance boundaries so each window begins at the start of an utterance rather than mid-sentence (option: prevent windows from crossing a boundary, or accept crossing but always start on one). Consider making the behavior a TOML config flag. If variable-length sequences result, pad with the reserved <|pad|> token and mask padding out of the cosine-similarity loss. Requires the special-token registration work to land first; takes effect on the next retrain. Update tests/test_dataset.py.
 ----

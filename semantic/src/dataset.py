@@ -23,6 +23,13 @@ class TextDataset(Dataset):
         sources: List of paths to text corpus files, or single corpus path
         tokenizer: Tokenizer to use for text processing
         seq_len: Maximum sequence length
+        boundary_token: Optional id of the utterance-boundary token (the
+            atomic <|endoftext|>). When given, windows start at utterance
+            boundaries instead of arbitrary stride offsets — a prompt then
+            begins at the start of an utterance rather than mid-sentence.
+            Windows may still cross boundaries (dialogue context spans
+            utterances), and stretches without any boundary fall back to
+            stride starts so marker-less corpora keep full coverage.
     """
 
     def __init__(
@@ -30,6 +37,7 @@ class TextDataset(Dataset):
         sources: str | list[str],
         tokenizer: object,
         seq_len: int,
+        boundary_token: int | None = None,
     ):
         if isinstance(sources, str):
             self.sources = [sources]
@@ -38,8 +46,15 @@ class TextDataset(Dataset):
 
         self.tokenizer = tokenizer
         self.seq_len = seq_len
+        self.boundary_token = boundary_token
 
         self.tokens = self._load_corpus()
+        self._utterance_starts = self._find_utterance_starts()
+        if boundary_token is not None:
+            print(
+                f"Sequence starts aligned to {len(self._utterance_starts)} "
+                f"utterance boundaries (token id {boundary_token})"
+            )
         self.sequences = self._create_sequences()
 
     def _load_corpus(self) -> List[int]:
@@ -61,19 +76,64 @@ class TextDataset(Dataset):
         print(f"Total tokens loaded: {len(all_tokens)}")
         return all_tokens
 
+    def _find_utterance_starts(self) -> List[int]:
+        """Positions where an utterance begins: 0, and the position after
+        every boundary token. Computed once — token positions never change."""
+        if self.boundary_token is None:
+            return []
+        last = len(self.tokens) - 1
+        starts = [0]
+        starts.extend(
+            i + 1
+            for i, token in enumerate(self.tokens[:last])
+            if token == self.boundary_token and i + 1 < last
+        )
+        return starts
+
+    def _window_starts(self, step: int) -> List[int]:
+        """Window start positions for the current stride.
+
+        Without a boundary token this is the plain stride walk. With one,
+        starts snap to utterance boundaries: the next boundary at least
+        `step` past the previous start is chosen, keeping the sequence count
+        (and epoch cost) close to the stride walk's while every window that
+        can begin on an utterance does. A gap of up to 2x step is tolerated
+        while waiting for a boundary; only stretches longer than that (e.g.
+        a marker-less source) fall back to stride fill so all text keeps
+        contributing windows.
+        """
+        last = len(self.tokens) - 1
+        if not self._utterance_starts:
+            return list(range(0, last, step))
+
+        starts: List[int] = []
+        bounds = self._utterance_starts
+        prev = -step  # so the first boundary always emits
+        for idx, start in enumerate(bounds):
+            next_bound = bounds[idx + 1] if idx + 1 < len(bounds) else last
+            if start - prev >= step:
+                starts.append(start)
+                prev = start
+            # Stride fill only across a stretch too long to bridge to the
+            # next boundary — snapping beats filling while one is in reach.
+            while next_bound - prev > 2 * step:
+                prev += step
+                starts.append(prev)
+        return starts
+
     def _create_sequences(self) -> List[Dict[str, List[int]]]:
         """Create (prompt, single next token) pairs."""
-        sequences = []
+        sequences: List[Dict[str, List[int]]] = []
         max_prompt = min(self.seq_len - 1, len(self.tokens) - 1)
         if max_prompt < 1:
             return sequences
 
         step = max(1, max_prompt // 2)
-        for i in range(0, len(self.tokens) - 1, step):
+        for i in self._window_starts(step):
             end = min(i + max_prompt, len(self.tokens) - 1)
             prompt_len = end - i
             if prompt_len < 1:
-                break
+                continue
             prompt = self.tokens[i : i + prompt_len]
             target = self.tokens[i + prompt_len : i + prompt_len + 1]
             sequences.append({"prompt_ids": prompt, "target_ids": target})
@@ -120,4 +180,5 @@ class TextDataset(Dataset):
             "vocab_size": self.get_vocab_size(),
             "sources": self.sources,
             "num_sources": len(self.sources),
+            "utterance_boundaries": len(self._utterance_starts),
         }

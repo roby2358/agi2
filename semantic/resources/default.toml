@@ -33,6 +33,10 @@ anchor_ratio = 0.3
 sigmoid_scale_start = 3.0
 sigmoid_scale_end = 10.0
 early_stop_patience = 20
+# Start training windows at utterance boundaries (the atomic <|endoftext|>
+# token) instead of arbitrary stride offsets. Only takes effect when the
+# tokenizer defines that token; otherwise stride starts are used unchanged.
+align_sequences = true
 
 # Performance
 use_compile = false  # torch.compile() for fused kernels

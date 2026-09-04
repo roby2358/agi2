@@ -241,12 +241,17 @@ def train_model(
     sigmoid_scale_start: float,
     sigmoid_scale_end: float,
     early_stop_patience: int,
+    align_sequences: bool = True,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
 
     Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
     over the training run, gradually tightening tolerances as the model improves.
+
+    With align_sequences (default), training windows start at utterance
+    boundaries when the tokenizer defines an atomic <|endoftext|> token;
+    tokenizers without one fall back to stride starts unchanged.
 
     Returns training history dict with keys:
     train_loss, epoch_times, metrics.
@@ -255,7 +260,13 @@ def train_model(
     model = model.to(device_obj)
     is_cuda = device_obj.type == "cuda"
 
-    dataset = TextDataset(sources, tokenizer, seq_len_start)
+    boundary_token = None
+    if align_sequences:
+        vocab = getattr(tokenizer, "vocab", None)
+        if isinstance(vocab, dict):
+            boundary_token = vocab.get("<|endoftext|>")
+
+    dataset = TextDataset(sources, tokenizer, seq_len_start, boundary_token)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)

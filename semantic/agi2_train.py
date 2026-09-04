@@ -183,6 +183,7 @@ def main(model_cls=AGI2Model):
             sigmoid_scale_start=sigmoid_scale_start,
             sigmoid_scale_end=sigmoid_scale_end,
             early_stop_patience=early_stop_patience,
+            align_sequences=get_config_value(config, "align_sequences", True),
         )
 
         print(f"Training completed successfully!")

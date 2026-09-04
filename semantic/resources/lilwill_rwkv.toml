@@ -33,6 +33,7 @@ anchor_ratio = 0.3
 sigmoid_scale_start = 3.0
 sigmoid_scale_end = 10.0
 early_stop_patience = 100
+align_sequences = true  # windows start at <|endoftext|> utterance boundaries
 
 # Performance
 use_compile = false

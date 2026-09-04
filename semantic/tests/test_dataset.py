@@ -4,7 +4,6 @@ import os
 import tempfile
 
 import pytest
-
 from src.basic_tokenizer import BasicTokenizer
 from src.dataset import TextDataset
 
@@ -95,3 +94,80 @@ class TestTextDataset:
             assert len(dataset) > 0
         finally:
             os.unlink(temp2.name)
+
+
+@pytest.mark.unit
+class TestBoundaryAlignment:
+    """Window starts snap to utterance boundaries when a boundary token id
+    is given; without one, behavior is the original stride walk."""
+
+    class IdTokenizer:
+        """Encodes space-separated ints as themselves — makes token
+        positions explicit in tests."""
+
+        vocab_size = 100
+
+        def encode(self, text: str) -> list[int]:
+            return [int(t) for t in text.split()]
+
+    def _dataset(self, tokens: list[int], seq_len: int, boundary) -> TextDataset:
+        temp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
+        temp.write(" ".join(str(t) for t in tokens))
+        temp.close()
+        try:
+            return TextDataset(temp.name, self.IdTokenizer(), seq_len, boundary)
+        finally:
+            os.unlink(temp.name)
+
+    def test_no_boundary_token_keeps_stride_starts(self) -> None:
+        tokens = list(range(20))
+        dataset = self._dataset(tokens, 9, None)
+        starts = [seq["prompt_ids"][0] for seq in dataset.sequences]
+        # max_prompt 8, step 4: the original walk
+        assert starts == [tokens[i] for i in range(0, 19, 4)]
+
+    def test_starts_snap_to_utterance_boundaries(self) -> None:
+        # Boundary token 99 at positions 3, 8, 13: utterances start at
+        # 0, 4, 9, 14. With step 4, each next boundary >= step past the
+        # previous start is chosen.
+        tokens = [10, 11, 12, 99, 20, 21, 22, 23, 99, 30, 31, 32, 33, 99, 40, 41]
+        dataset = self._dataset(tokens, 9, 99)
+        start_positions = dataset._window_starts(4)
+        assert start_positions == [0, 4, 9, 14]
+        for pos in start_positions[1:]:
+            assert tokens[pos - 1] == 99  # each start follows a boundary
+
+    def test_windows_may_cross_boundaries(self) -> None:
+        # Alignment fixes where windows START; context still spans
+        # utterances, so the boundary token appears inside prompts and the
+        # model trains on it.
+        tokens = [10, 11, 99, 20, 21, 22, 99, 30, 31, 32]
+        dataset = self._dataset(tokens, 9, 99)
+        assert any(99 in seq["prompt_ids"] for seq in dataset.sequences)
+
+    def test_markerless_stretch_gets_stride_fill(self) -> None:
+        # One boundary early, then a long marker-less run: the run must
+        # still be covered by stride windows, not just the one boundary.
+        # (The utterance start at 2 is deliberately skipped — it's closer
+        # than a stride to the previous start at 0.)
+        tokens = [10, 99] + list(range(30, 60))
+        dataset = self._dataset(tokens, 9, 99)
+        start_positions = dataset._window_starts(4)
+        assert start_positions == [0, 4, 8, 12, 16, 20, 24]
+        # Tail is covered: the last window reaches the corpus end.
+        assert start_positions[-1] + 8 >= len(tokens) - 1
+
+    def test_sequence_count_stays_comparable(self) -> None:
+        # Snapping must not multiply the epoch's sequence count: starts
+        # stay at least a stride apart.
+        tokens = []
+        for utterance in range(40):
+            tokens.extend([utterance % 50, (utterance + 1) % 50, 99])
+        aligned = self._dataset(tokens, 9, 99)
+        unaligned = self._dataset(tokens, 9, None)
+        assert len(aligned) <= len(unaligned) + 1
+
+    def test_stats_report_boundaries(self) -> None:
+        tokens = [10, 11, 99, 20, 21, 99, 30, 31]
+        dataset = self._dataset(tokens, 5, 99)
+        assert dataset.get_corpus_stats()["utterance_boundaries"] == 3
