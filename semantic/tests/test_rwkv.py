@@ -40,6 +40,59 @@ class TestRWKVTimeMix:
         out = mix._wkv(k, v)
         assert torch.allclose(out[:, 0], v[:, 0], atol=1e-5)
 
+    @pytest.mark.parametrize("seq_len", [1, 7, 16, 30, 32, 33, 100])
+    def test_chunked_matches_loop(self, seq_len):
+        # The chunked scan must reproduce the per-step reference across
+        # sequence lengths shorter than, equal to, and straddling the
+        # chunk size (including a non-multiple remainder chunk).
+        torch.manual_seed(0)
+        mix = RWKVTimeMix(d_model=16, layer_id=1, n_layer=4)
+        k = torch.randn(2, seq_len, 16) * 3
+        v = torch.randn(2, seq_len, 16)
+        assert torch.allclose(mix._wkv(k, v), mix._wkv_loop(k, v), atol=1e-5, rtol=1e-4)
+
+    def test_chunked_matches_loop_extreme_inputs(self):
+        # Fast-decay channels and huge key magnitudes stress the log-space
+        # stabilization; both implementations must agree and stay finite.
+        torch.manual_seed(1)
+        mix = RWKVTimeMix(d_model=8, layer_id=0, n_layer=2)
+        with torch.no_grad():
+            mix.time_decay.copy_(
+                torch.linspace(-5.0, 3.0, 8)
+            )  # decay e^-5 .. e^3 per step
+        k = torch.randn(2, 40, 8) * 50
+        v = torch.randn(2, 40, 8)
+        chunked = mix._wkv(k, v)
+        loop = mix._wkv_loop(k, v)
+        assert torch.isfinite(chunked).all()
+        assert torch.allclose(chunked, loop, atol=1e-4, rtol=1e-3)
+
+    def test_chunked_matches_loop_gradients(self):
+        # Training runs through the chunked path, so its gradients must
+        # match the reference, for inputs and the time parameters alike.
+        torch.manual_seed(2)
+        mix = RWKVTimeMix(d_model=8, layer_id=0, n_layer=2)
+        k = torch.randn(1, 35, 8, requires_grad=True)
+        v = torch.randn(1, 35, 8, requires_grad=True)
+
+        grads = {}
+        for name, fn in [("chunked", mix._wkv), ("loop", mix._wkv_loop)]:
+            mix.zero_grad()
+            if k.grad is not None:
+                k.grad = None
+                v.grad = None
+            fn(k, v).square().sum().backward()
+            grads[name] = (
+                k.grad.clone(),
+                v.grad.clone(),
+                mix.time_decay.grad.clone(),
+                mix.time_first.grad.clone(),
+            )
+
+        for got, want in zip(grads["chunked"], grads["loop"]):
+            assert torch.isfinite(got).all()
+            assert torch.allclose(got, want, atol=1e-4, rtol=1e-3)
+
 
 @pytest.mark.unit
 class TestRWKVChannelMix:

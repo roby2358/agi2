@@ -79,11 +79,93 @@ class RWKVTimeMix(nn.Module):
         self.receptance = nn.Linear(d_model, d_model, bias=False)
         self.output = nn.Linear(d_model, d_model, bias=False)
 
-    def _wkv(self, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        """Numerically stable WKV recurrence over the time dimension.
+    # Timesteps processed per chunk in _wkv. Larger chunks mean fewer kernel
+    # launches but O(chunk^2) memory per chunk; 16 keeps the (B, c, c, D)
+    # buffer modest while cutting launches ~16x vs the per-step loop.
+    wkv_chunk_size = 16
 
-        Runs in float32 regardless of input dtype; exponentials are kept
-        stable by tracking a running maximum exponent per channel.
+    def _wkv(self, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        """Numerically stable WKV recurrence, computed in chunks of timesteps.
+
+        Equivalent to the per-step reference `_wkv_loop` (the unit tests pin
+        the match), but processes `wkv_chunk_size` timesteps per iteration
+        with batched tensor ops: within a chunk every output is an explicit
+        log-sum-exp over the chunk's keys plus the incoming state, stabilized
+        by a per-position maximum exponent instead of the loop's running one.
+        The (aa, bb, pp) state carried between chunks is identical to the
+        loop's. The per-step loop launched ~10 tiny CUDA kernels per timestep,
+        making training kernel-launch-bound; chunking batches that work.
+
+        Runs in float32 regardless of input dtype.
+
+        Args:
+            k: Keys of shape (batch_size, seq_len, d_model)
+            v: Values of shape (batch_size, seq_len, d_model)
+
+        Returns:
+            Tensor of shape (batch_size, seq_len, d_model)
+        """
+        batch_size, seq_len, d_model = k.size()
+        dtype = k.dtype
+        k = k.float()
+        v = v.float()
+        w = -torch.exp(self.time_decay.float())
+        u = self.time_first.float()
+
+        aa = k.new_zeros(batch_size, d_model)  # weighted sum of values
+        bb = k.new_zeros(batch_size, d_model)  # sum of weights
+        pp = k.new_full((batch_size, d_model), -1e38)  # state exponent
+        neg_inf = float("-inf")
+        outputs: List[torch.Tensor] = []
+
+        for start in range(0, seq_len, self.wkv_chunk_size):
+            kc = k[:, start : start + self.wkv_chunk_size]  # (B, c, D)
+            vc = v[:, start : start + self.wkv_chunk_size]
+            c = kc.size(1)
+            steps = torch.arange(c, device=k.device, dtype=torch.float32)
+
+            # Exponent of the incoming state's contribution to output j:
+            # the state decays j steps into the chunk.
+            state_exp = pp.unsqueeze(1) + steps.view(1, c, 1) * w  # (B, c, D)
+            # Within-chunk history: output j sums e^{(j-1-i)w + k_i} v_i over
+            # i < j. gaps[j, i] = j - 1 - i; entries with i >= j are masked.
+            gaps = steps.view(c, 1) - 1.0 - steps.view(1, c)  # (c, c)
+            alpha = gaps.unsqueeze(-1) * w + kc.unsqueeze(1)  # (B, c, c, D)
+            alpha = alpha.masked_fill((gaps < 0).view(1, c, c, 1), neg_inf)
+            # Current token's bonus term, always finite — so the max is too.
+            bonus = u + kc  # (B, c, D)
+
+            m = torch.maximum(torch.maximum(alpha.amax(dim=2), state_exp), bonus)
+            hist = torch.exp(alpha - m.unsqueeze(2))  # exp(-inf) = 0 where masked
+            e_bonus = torch.exp(bonus - m)
+            e_state = torch.exp(state_exp - m)
+            num = (
+                (hist * vc.unsqueeze(1)).sum(dim=2)
+                + e_bonus * vc
+                + aa.unsqueeze(1) * e_state
+            )
+            den = hist.sum(dim=2) + e_bonus + bb.unsqueeze(1) * e_state
+            outputs.append(num / den)
+
+            # Carry the state to the chunk's end: the incoming state decays c
+            # steps and every key in the chunk decays to the last position.
+            beta = (c - 1.0 - steps).view(1, c, 1) * w + kc  # (B, c, D)
+            state_end = pp + c * w
+            p_new = torch.maximum(state_end, beta.amax(dim=1))
+            e_carry = torch.exp(state_end - p_new)
+            e_beta = torch.exp(beta - p_new.unsqueeze(1))
+            aa = aa * e_carry + (e_beta * vc).sum(dim=1)
+            bb = bb * e_carry + e_beta.sum(dim=1)
+            pp = p_new
+
+        return torch.cat(outputs, dim=1).to(dtype)
+
+    def _wkv_loop(self, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        """Per-step reference WKV recurrence (the original implementation).
+
+        Kept as the ground truth the chunked `_wkv` is tested against; not
+        used in the forward pass. Stability comes from tracking a running
+        maximum exponent per channel.
 
         Args:
             k: Keys of shape (batch_size, seq_len, d_model)
