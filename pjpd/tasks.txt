@@ -1,3 +1,27 @@
+Priority:   92
+Status: Done
+ID: dense-tgt-r4mk
+Created: 2026-09-04T18:05:00Z
+Updated: 2026-09-04T18:30:00Z
+
+agi2/semantic: dense training targets — train every position, not just each window's last. _compute_batch_loss (src/training.py) currently takes only the hidden state at the last real prompt position against the single next token, so a ~250-token window yields ONE training signal; a causal LM extracts one per position from the same forward pass. Over a full lilwill_rwkv run that is ~900K token-level signals where standard training would see ~136M (~150x deficit) — the likely reason raw_gap plateaus by epoch 30. Change: for every real position t, the target is the next token (prompt_ids[t+1] inside the window; target_ids[0] at the last real position; padding positions excluded via prompt_mask), flatten all valid (hidden, target-embedding) pairs and feed them to PairwiseCosineLoss unchanged — its forward is shape-agnostic and num_pairs already scales with N. Behind a dense_targets TOML flag (default true; false = the old last-position path, kept as the control). valid_observations in the metrics will jump from ~batch to ~token-budget (~37k) — expected. Tests for the next-token-target construction (interior positions, last real position, padding exclusion) in tests/test_training.py. Keeps the cosine objective untouched — this is purely a signal-density fix.
+----
+Priority:   91
+Status: ToDo
+ID: infonce-w2qh
+Created: 2026-09-04T18:05:00Z
+Updated: 2026-09-04T18:05:00Z
+
+agi2/semantic: InfoNCE objective — cross-entropy over cosine logits. The current sigmoid-gap loss pulls hidden states toward target embeddings but exerts almost no downward pressure on the 4,095 wrong tokens (only sampled pairs), so cosine scores stay packed and sampling looks random even when the representation knows the answer (measured: <|endoftext|> ranks top-3 at true utterance ends but p≈0.018 under the softmax). Replace (or make selectable alongside) the geometric/anchor loss: logits = cosine(hidden, every vocab embedding) / learnable-or-config temperature, then standard NLL against the true next token — this IS cosine-similarity training with proper contrastive normalization (InfoNCE), and it makes training optimize exactly what generation samples from (generation already scores by cosine-softmax). Keep the geometric term available as an auxiliary (config ratio). Requires dense-tgt-r4mk (per-position targets) to be worthwhile. Expected effects: sharper sampling distribution, coherent word boundaries, EOT stopping firing naturally, less need for repetition penalty. TOML: objective = "infonce" | "pairwise", nce_temperature. Update SPEC_SIMILARITY_TRAINING.md with the rationale and keep the pairwise path as the research control.
+----
+Priority:   90
+Status: ToDo
+ID: ce-control-p8vn
+Created: 2026-09-04T18:05:00Z
+Updated: 2026-09-04T18:05:00Z
+
+agi2/semantic: plain cross-entropy control run — the missing baseline for the cosine-training experiment. Same architecture (RWKVModel and/or AGI2Model), standard logits (model.forward already projects to vocab) + F.cross_entropy on per-position next tokens, identical data/curriculum/epochs as lilwill_rwkv. Deliverables: a ce (or objective = "ce") training path sharing the dense-target machinery from dense-tgt-r4mk, a trained control checkpoint, held-out perplexity for both models, and a side-by-side sample comparison. Reference expectation: nanoGPT-tiny at this scale (~1M-token Shakespeare corpus, ~10M params) produces recognizable pseudo-Shakespeare — if the control reaches that and the cosine models do not, the gap measures what the cosine objective costs; if it does not, the bottleneck is elsewhere (data/architecture). Do not retire the cosine path — the point is to quantify it, not replace it.
+----
 Priority:   90
 Status: Done
 ID: eot-token-azmi

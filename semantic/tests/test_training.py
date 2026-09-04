@@ -8,13 +8,18 @@ from unittest.mock import Mock, patch
 
 import pytest
 import torch
-
 from src.basic_tokenizer import BasicTokenizer
 from src.config import AGI2Config
 from src.cosine_loss import PairwiseCosineLoss
 from src.dataset import TextDataset
 from src.model import AGI2Model
-from src.training import _collate_fn, train_epoch, train_model
+from src.training import (
+    _collate_fn,
+    _compute_batch_loss,
+    _next_token_ids,
+    train_epoch,
+    train_model,
+)
 
 
 class TestTraining:
@@ -115,6 +120,100 @@ class TestTraining:
         # Second item should have partial mask
         assert result["prompt_mask"][1, :2].all()
         assert not result["prompt_mask"][1, 2]
+
+    def test_next_token_ids_dense_targets(self) -> None:
+        """Every real position targets its next token; the last real
+        position targets the held-out target; padding is ignorable."""
+        batch = _collate_fn(
+            [
+                {
+                    "prompt_ids": torch.tensor([10, 11, 12]),
+                    "target_ids": torch.tensor([13]),
+                },
+                {
+                    "prompt_ids": torch.tensor([20, 21]),
+                    "target_ids": torch.tensor([22]),
+                },
+            ]
+        )
+        next_ids = _next_token_ids(
+            batch["prompt_ids"], batch["prompt_mask"], batch["target_ids"]
+        )
+        # Full-length sample: interior positions shift, last gets the target
+        assert next_ids[0].tolist() == [11, 12, 13]
+        # Padded sample: last REAL position (index 1) gets the target
+        assert next_ids[1, 0] == 21
+        assert next_ids[1, 1] == 22
+        # Masked selection excludes the padding position entirely
+        flat = next_ids[batch["prompt_mask"]]
+        assert flat.tolist() == [11, 12, 13, 21, 22]
+
+    def test_dense_loss_sees_one_observation_per_token(self) -> None:
+        """dense_targets feeds every real position to the loss; the control
+        path feeds one per sample."""
+        config = AGI2Config(
+            vocab_size=50, n_positions=8, n_ctx=8, n_embd=16, n_layer=1, n_head=2
+        )
+        model = AGI2Model(config)
+        loss_fn = PairwiseCosineLoss(0.7, 0.3, 3.0)
+        batch = _collate_fn(
+            [
+                {
+                    "prompt_ids": torch.tensor([1, 2, 3, 4]),
+                    "target_ids": torch.tensor([5]),
+                },
+                {
+                    "prompt_ids": torch.tensor([6, 7]),
+                    "target_ids": torch.tensor([8]),
+                },
+            ]
+        )
+        _, dense_metrics = _compute_batch_loss(
+            model,
+            batch["prompt_ids"],
+            batch["prompt_mask"],
+            batch["target_ids"],
+            loss_fn,
+            dense_targets=True,
+        )
+        _, sparse_metrics = _compute_batch_loss(
+            model,
+            batch["prompt_ids"],
+            batch["prompt_mask"],
+            batch["target_ids"],
+            loss_fn,
+            dense_targets=False,
+        )
+        assert dense_metrics["valid_observations"] == 6  # 4 + 2 real positions
+        assert sparse_metrics["valid_observations"] == 2  # one per sample
+
+    def test_dense_loss_backward(self) -> None:
+        """The dense path must produce finite gradients end to end."""
+        config = AGI2Config(
+            vocab_size=50, n_positions=8, n_ctx=8, n_embd=16, n_layer=1, n_head=2
+        )
+        model = AGI2Model(config)
+        loss_fn = PairwiseCosineLoss(0.7, 0.3, 3.0)
+        batch = _collate_fn(
+            [
+                {
+                    "prompt_ids": torch.tensor([1, 2, 3, 4]),
+                    "target_ids": torch.tensor([5]),
+                }
+            ]
+        )
+        loss, _ = _compute_batch_loss(
+            model,
+            batch["prompt_ids"],
+            batch["prompt_mask"],
+            batch["target_ids"],
+            loss_fn,
+            dense_targets=True,
+        )
+        loss.backward()
+        grads = [p.grad for p in model.parameters() if p.grad is not None]
+        assert len(grads) > 0
+        assert all(torch.isfinite(g).all() for g in grads)
 
     def test_train_model_creates_output(self) -> None:
         """Test that train_model creates trained directory and saves model."""

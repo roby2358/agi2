@@ -49,31 +49,63 @@ def _collate_fn(
     }
 
 
+def _next_token_ids(
+    prompt_ids: torch.Tensor,
+    prompt_mask: torch.Tensor,
+    target_ids: torch.Tensor,
+) -> torch.Tensor:
+    """Per-position next-token ids for a padded batch.
+
+    Position t's next token is prompt_ids[t + 1] inside the window; the last
+    REAL position's (per prompt_mask) is the window's held-out target. Values
+    at padding positions are meaningless — callers must exclude them with
+    prompt_mask before use.
+    """
+    next_ids = torch.zeros_like(prompt_ids)
+    next_ids[:, :-1] = prompt_ids[:, 1:]
+    last_prompt_pos = prompt_mask.sum(dim=1) - 1
+    batch_index = torch.arange(prompt_ids.size(0), device=prompt_ids.device)
+    next_ids[batch_index, last_prompt_pos] = target_ids[:, 0]
+    return next_ids
+
+
 def _compute_batch_loss(
     model: nn.Module,
     prompt_ids: torch.Tensor,
     prompt_mask: torch.Tensor,
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
+    dense_targets: bool = True,
 ) -> tuple:
     """Compute pairwise cosine similarity loss for a single batch.
 
-    The model sees only the prompt; the hidden vector at each sample's last
-    real prompt position must predict the target token it has never seen.
-    This matches generation, which scores the next token from the hidden
-    state at the end of the sequence so far.
+    With dense_targets (default), EVERY real position's hidden vector must
+    predict its next token — one training signal per token, exactly as the
+    causal model computes hidden states anyway. A ~250-token window then
+    yields ~250 signals instead of the single one the original last-position
+    formulation extracted (a ~150x difference over a full run — the
+    dense-tgt-r4mk rationale). The loss is unchanged: all valid (hidden,
+    target-embedding) pairs are flattened into one big observation set, and
+    PairwiseCosineLoss already scales its pair sampling with N.
+
+    With dense_targets=False (the pre-2026-09-04 control), only the hidden
+    vector at each sample's last real prompt position trains against the
+    held-out target token. Both formulations match generation, which scores
+    the next token from the hidden state at the end of the sequence so far.
     """
     _, hidden_states = model.forward_hidden(prompt_ids)
-
-    # Hidden vector at the last unpadded prompt position, per sample
-    last_prompt_pos = prompt_mask.sum(dim=1) - 1
-    batch_index = torch.arange(prompt_ids.size(0), device=prompt_ids.device)
-    h = hidden_states[batch_index, last_prompt_pos, :]
-
-    # Embedding of the next token (the target) from the codebook
     embedding_weight = model.token_embeddings.embedding.weight
-    next_token = target_ids[:, 0]
-    e = embedding_weight[next_token]
+
+    if dense_targets:
+        next_ids = _next_token_ids(prompt_ids, prompt_mask, target_ids)
+        h = hidden_states[prompt_mask]  # (N, n_embd) — real positions only
+        e = embedding_weight[next_ids[prompt_mask]]
+    else:
+        # Hidden vector at the last unpadded prompt position, per sample
+        last_prompt_pos = prompt_mask.sum(dim=1) - 1
+        batch_index = torch.arange(prompt_ids.size(0), device=prompt_ids.device)
+        h = hidden_states[batch_index, last_prompt_pos, :]
+        e = embedding_weight[target_ids[:, 0]]
 
     return loss_fn(h, e, embedding_weight)
 
@@ -87,6 +119,7 @@ def _step_with_amp(
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
     clip_grad_norm: float,
+    dense_targets: bool = True,
 ) -> tuple:
     """Forward + backward with AMP."""
     with torch.cuda.amp.autocast():
@@ -96,6 +129,7 @@ def _step_with_amp(
             prompt_mask,
             target_ids,
             loss_fn,
+            dense_targets,
         )
     scaler.scale(loss).backward()
     if clip_grad_norm > 0:
@@ -114,6 +148,7 @@ def _step_standard(
     target_ids: torch.Tensor,
     loss_fn: PairwiseCosineLoss,
     clip_grad_norm: float,
+    dense_targets: bool = True,
 ) -> tuple:
     """Forward + backward without AMP."""
     loss, metrics = _compute_batch_loss(
@@ -122,6 +157,7 @@ def _step_standard(
         prompt_mask,
         target_ids,
         loss_fn,
+        dense_targets,
     )
     loss.backward()
     if clip_grad_norm > 0:
@@ -139,6 +175,7 @@ def train_epoch(
     clip_grad_norm: float,
     scaler: torch.cuda.amp.GradScaler | None,
     log_gpu_memory: bool,
+    dense_targets: bool = True,
 ) -> Dict[str, float]:
     """
     Train the model for one epoch using pairwise cosine similarity loss.
@@ -167,6 +204,7 @@ def train_epoch(
                 target_ids,
                 loss_fn,
                 clip_grad_norm,
+                dense_targets,
             )
         else:
             loss, metrics = _step_standard(
@@ -177,6 +215,7 @@ def train_epoch(
                 target_ids,
                 loss_fn,
                 clip_grad_norm,
+                dense_targets,
             )
 
         total_loss += loss.item()
@@ -242,9 +281,14 @@ def train_model(
     sigmoid_scale_end: float,
     early_stop_patience: int,
     align_sequences: bool = True,
+    dense_targets: bool = True,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
+
+    With dense_targets (default), every real position trains against its
+    next token — see _compute_batch_loss; dense_targets=False restores the
+    original one-signal-per-window formulation as a control.
 
     Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
     over the training run, gradually tightening tolerances as the model improves.
@@ -345,6 +389,7 @@ def train_model(
             1.0,
             scaler,
             log_gpu_memory,
+            dense_targets,
         )
 
         epoch_time = time.time() - start_time

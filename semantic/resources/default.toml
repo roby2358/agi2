@@ -38,6 +38,11 @@ early_stop_patience = 20
 # tokenizer defines that token; otherwise stride starts are used unchanged.
 align_sequences = true
 
+# Train every real position against its next token (one signal per token,
+# as a causal LM extracts from the same forward pass). false restores the
+# original one-signal-per-window last-position formulation as a control.
+dense_targets = true
+
 # Generation anti-repetition. repetition_penalty is subtracted from a
 # token's cosine-similarity score once per prior occurrence in the
 # generated output (cosine scores span [-1, 1]; suggested 0.3-0.5 at
