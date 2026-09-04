@@ -28,12 +28,21 @@ class BPETokenizer:
 
     Args:
         vocab_size: Target vocabulary size, including the 256 byte-level
-            base tokens and the <EOS> special token. The fitted vocabulary
+            base tokens and the special tokens. The fitted vocabulary
             may come out slightly smaller if the corpus supports fewer
             merges.
     """
 
     EOS_TOKEN = "<EOS>"
+    # End-of-utterance marker as it literally appears in the training
+    # corpora. Registered as a special token so it encodes atomically (one
+    # id) instead of as ordinary subwords — the model then trains on the
+    # real token and generation can stop on it.
+    EOT_TOKEN = "<|endoftext|>"
+    # Reserved for future use; not emitted or consumed anywhere yet.
+    BREAK_TOKEN = "<|break|>"  # future intra-document structure
+    PAD_TOKEN = "<|pad|>"  # future variable-length batching + loss masking
+    SPECIAL_TOKENS = (EOS_TOKEN, EOT_TOKEN, BREAK_TOKEN, PAD_TOKEN)
 
     def __init__(self, vocab_size: int = 4096):
         self.vocab_size = vocab_size
@@ -53,7 +62,7 @@ class BPETokenizer:
 
         trainer = BpeTrainer(
             vocab_size=self.vocab_size,
-            special_tokens=[self.EOS_TOKEN],
+            special_tokens=list(self.SPECIAL_TOKENS),
             initial_alphabet=ByteLevel.alphabet(),
             show_progress=False,
         )
@@ -61,7 +70,11 @@ class BPETokenizer:
 
         self._tokenizer = tokenizer
         self.vocab_size = tokenizer.get_vocab_size()
-        self.vocab = {self.EOS_TOKEN: tokenizer.token_to_id(self.EOS_TOKEN)}
+        self.vocab = {
+            t: tid
+            for t in self.SPECIAL_TOKENS
+            if (tid := tokenizer.token_to_id(t)) is not None
+        }
 
     def _require_fitted(self) -> Tokenizer:
         if self._tokenizer is None:
@@ -85,4 +98,10 @@ class BPETokenizer:
         tokenizer = Tokenizer.from_file(filepath)
         self._tokenizer = tokenizer
         self.vocab_size = tokenizer.get_vocab_size()
-        self.vocab = {self.EOS_TOKEN: tokenizer.token_to_id(self.EOS_TOKEN)}
+        # Older saved tokenizers may predate some special tokens; keep only
+        # the ones this file actually defines.
+        self.vocab = {
+            t: tid
+            for t in self.SPECIAL_TOKENS
+            if (tid := tokenizer.token_to_id(t)) is not None
+        }

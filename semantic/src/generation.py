@@ -9,12 +9,36 @@ the cosine similarity training objective.
 """
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import torch
 import torch.nn.functional as F
 
 from .basic_tokenizer import BasicTokenizer
+
+# Token names looked up by string in tokenizer.vocab so every tokenizer class
+# (basic, BPE, tiktoken) works: whichever of these it defines are used.
+# Sampling one of the stop tokens ends generation; all special tokens are
+# stripped from returned text — they belong in the token set and in training,
+# never in inference output.
+STOP_TOKEN_NAMES = ("<EOS>", "<|endoftext|>")
+SPECIAL_TOKEN_NAMES = ("<EOS>", "<|endoftext|>", "<|break|>", "<|pad|>")
+
+
+def _token_ids(tokenizer: BasicTokenizer, names: tuple) -> Set[int]:
+    """Collect the ids a tokenizer defines for the given token names."""
+    ids = set()
+    for name in names:
+        token_id = tokenizer.vocab.get(name)
+        if isinstance(token_id, int) and token_id >= 0:
+            ids.add(token_id)
+    return ids
+
+
+def _decode_stripped(tokenizer: BasicTokenizer, token_ids: List[int]) -> str:
+    """Decode token ids with all special tokens removed from the output."""
+    special = _token_ids(tokenizer, SPECIAL_TOKEN_NAMES)
+    return tokenizer.decode([t for t in token_ids if t not in special])
 
 
 def build_corpus_token_mask(
@@ -27,7 +51,7 @@ def build_corpus_token_mask(
 
     Tokens outside the training corpus keep their random-init embeddings, so
     cosine-similarity scoring can pick them spuriously. Masking generation to
-    corpus tokens (plus <EOS>) avoids that without retraining.
+    corpus tokens (plus the stop tokens) avoids that without retraining.
 
     Missing source files are skipped with a warning. Returns None if no
     corpus tokens could be collected.
@@ -51,9 +75,9 @@ def build_corpus_token_mask(
         print("Warning: no corpus tokens found; generation is unrestricted")
         return None
 
-    eos_id = tokenizer.vocab.get("<EOS>", -1)
-    if 0 <= eos_id < vocab_size:
-        allowed[eos_id] = True
+    for stop_id in _token_ids(tokenizer, STOP_TOKEN_NAMES):
+        if stop_id < vocab_size:
+            allowed[stop_id] = True
 
     return allowed
 
@@ -139,7 +163,7 @@ def generate_text(
     input_ids = torch.tensor([input_ids], dtype=torch.long, device=device)
     generated_ids = input_ids.clone()
 
-    eos_id = tokenizer.vocab.get("<EOS>", -1)
+    stop_ids = _token_ids(tokenizer, STOP_TOKEN_NAMES)
 
     with torch.inference_mode():
         for _ in range(max_length):
@@ -156,10 +180,10 @@ def generate_text(
 
             generated_ids = torch.cat([generated_ids, next_token.unsqueeze(0)], dim=1)
 
-            if next_token.item() == eos_id:
+            if next_token.item() in stop_ids:
                 break
 
-    return tokenizer.decode(generated_ids[0].tolist())
+    return _decode_stripped(tokenizer, generated_ids[0].tolist())
 
 
 def generate_with_beam_search(
@@ -194,7 +218,7 @@ def generate_with_beam_search(
     input_ids = torch.tensor([input_ids], dtype=torch.long, device=device)
 
     beams: list[tuple[torch.Tensor, float]] = [(input_ids.clone(), 0.0)]
-    eos_id = tokenizer.vocab.get("<EOS>", -1)
+    stop_ids = _token_ids(tokenizer, STOP_TOKEN_NAMES)
 
     with torch.inference_mode():
         for _ in range(max_length):
@@ -217,10 +241,10 @@ def generate_with_beam_search(
 
             beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:beam_width]
 
-            if all(b[0][0, -1].item() == eos_id for b in beams):
+            if all(b[0][0, -1].item() in stop_ids for b in beams):
                 break
 
-    return [tokenizer.decode(seq[0].tolist()) for seq, _ in beams]
+    return [_decode_stripped(tokenizer, seq[0].tolist()) for seq, _ in beams]
 
 
 def generate_interactive(

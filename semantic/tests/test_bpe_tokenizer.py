@@ -38,10 +38,25 @@ class TestBPETokenizer:
         tokenizer = BPETokenizer(vocab_size=300)
         tokenizer.fit(CORPUS)
 
-        # Byte-level alphabet + <EOS> is the floor; target is the ceiling
+        # Byte-level alphabet + specials is the floor; target is the ceiling
         assert 257 <= tokenizer.vocab_size <= 300
-        assert "<EOS>" in tokenizer.vocab
-        assert tokenizer.vocab["<EOS>"] >= 0
+        for token in BPETokenizer.SPECIAL_TOKENS:
+            assert token in tokenizer.vocab
+            assert tokenizer.vocab[token] >= 0
+        assert len(set(tokenizer.vocab.values())) == len(BPETokenizer.SPECIAL_TOKENS)
+
+    def test_special_tokens_encode_atomically(self):
+        """Registered specials encode to a single id even inside text —
+        the corpus's literal <|endoftext|> markers become one real token."""
+        tokenizer = BPETokenizer(vocab_size=300)
+        tokenizer.fit(["speak the speech<|endoftext|>" * 20])
+
+        for token in BPETokenizer.SPECIAL_TOKENS:
+            assert tokenizer.encode(token) == [tokenizer.vocab[token]]
+
+        ids = tokenizer.encode("the speech<|endoftext|>")
+        assert ids.count(tokenizer.vocab["<|endoftext|>"]) == 1
+        assert tokenizer.decode(ids) == "the speech<|endoftext|>"
 
     def test_encode_decode_roundtrip(self):
         """Byte-level BPE must round-trip corpus text exactly."""
