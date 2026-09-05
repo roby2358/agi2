@@ -187,6 +187,7 @@ def main(model_cls=AGI2Model):
             dense_targets=get_config_value(config, "dense_targets", True),
             objective=get_config_value(config, "objective", "pairwise"),
             nce_temperature=get_config_value(config, "nce_temperature", 0.07),
+            seq_len_ramp_epochs=get_config_value(config, "seq_len_ramp_epochs", 0),
         )
 
         print(f"Training completed successfully!")

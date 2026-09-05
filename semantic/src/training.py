@@ -23,6 +23,28 @@ from .dataset import TextDataset
 logger = logging.getLogger(__name__)
 
 
+def _current_seq_len(
+    epoch: int,
+    seq_len_start: int,
+    seq_len_end: int,
+    total_epochs: int,
+    ramp_epochs: int,
+) -> int:
+    """Sequence length for an epoch under the linear ramp.
+
+    ramp_epochs <= 0 spreads the ramp over the whole run; N > 0 completes
+    it by epoch N (0-indexed epochs, so epoch N-1 is the first full-length
+    epoch) and holds at seq_len_end after. With dense targets a full-length
+    window already contains every shorter-context lesson, so a short ramp
+    (or none: seq_len_start == seq_len_end) is normally all that's wanted;
+    the ramp remains for early-training stability and as the historical
+    default.
+    """
+    span = ramp_epochs if ramp_epochs > 0 else total_epochs
+    progress = min(1.0, epoch / max(span - 1, 1))
+    return int(seq_len_start + (seq_len_end - seq_len_start) * progress)
+
+
 def _collate_fn(
     batch: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, torch.Tensor]:
@@ -288,6 +310,7 @@ def train_model(
     dense_targets: bool = True,
     objective: str = "pairwise",
     nce_temperature: float = 0.07,
+    seq_len_ramp_epochs: int = 0,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
@@ -302,6 +325,11 @@ def train_model(
 
     Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
     over the training run, gradually tightening tolerances as the model improves.
+
+    seq_len_ramp_epochs controls how fast seq_len ramps from seq_len_start
+    to seq_len_end: 0 (default) spreads the ramp over the whole run, N > 0
+    completes it by epoch N and trains at seq_len_end thereafter. The
+    sigmoid scale always ramps over the whole run regardless.
 
     With align_sequences (default), training windows start at utterance
     boundaries when the tokenizer defines an atomic <|endoftext|> token;
@@ -358,7 +386,10 @@ def train_model(
         )
     else:
         print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
-    print(f"Seq len: {seq_len_start} -> {seq_len_end} over {epochs} epochs")
+    ramp_desc = (
+        f"{seq_len_ramp_epochs}" if seq_len_ramp_epochs > 0 else f"{epochs} (whole run)"
+    )
+    print(f"Seq len: {seq_len_start} -> {seq_len_end} over {ramp_desc} epochs")
     print(
         f"Sigmoid scale: {sigmoid_scale_start} -> {sigmoid_scale_end} over {epochs} epochs"
     )
@@ -368,7 +399,7 @@ def train_model(
         os.makedirs("trained", exist_ok=True)
 
     for epoch in range(start_epoch, start_epoch + epochs):
-        # Ramp sigmoid scale and seq_len linearly
+        # Ramp sigmoid scale (whole run) and seq_len (seq_len_ramp_epochs)
         total_epochs = start_epoch + epochs
         progress = epoch / max(total_epochs - 1, 1)
         current_scale = (
@@ -376,7 +407,9 @@ def train_model(
         )
         loss_fn.sigmoid_scale = current_scale
 
-        current_seq_len = int(seq_len_start + (seq_len_end - seq_len_start) * progress)
+        current_seq_len = _current_seq_len(
+            epoch, seq_len_start, seq_len_end, total_epochs, seq_len_ramp_epochs
+        )
 
         # Scale batch size inversely with seq_len to keep memory constant.
         # 1.125x headroom lets shorter sequences use more memory.

@@ -16,10 +16,47 @@ from src.model import AGI2Model
 from src.training import (
     _collate_fn,
     _compute_batch_loss,
+    _current_seq_len,
     _next_token_ids,
     train_epoch,
     train_model,
 )
+
+
+@pytest.mark.unit
+class TestCurrentSeqLen:
+    """Test cases for the seq_len ramp schedule."""
+
+    def test_default_ramps_over_whole_run(self) -> None:
+        """ramp_epochs=0 preserves the original whole-run linear ramp."""
+        assert _current_seq_len(0, 2, 1024, 100, 0) == 2
+        assert _current_seq_len(99, 2, 1024, 100, 0) == 1024
+        mid = _current_seq_len(50, 2, 1024, 100, 0)
+        assert 500 < mid < 530
+
+    def test_short_ramp_then_hold(self) -> None:
+        """ramp_epochs=N reaches seq_len_end by epoch N-1 and holds."""
+        assert _current_seq_len(0, 2, 1024, 100, 10) == 2
+        assert _current_seq_len(9, 2, 1024, 100, 10) == 1024
+        assert _current_seq_len(50, 2, 1024, 100, 10) == 1024
+        assert _current_seq_len(99, 2, 1024, 100, 10) == 1024
+
+    def test_flat_when_start_equals_end(self) -> None:
+        """Equal start/end trains at a constant length regardless of ramp."""
+        for epoch in (0, 1, 50, 99):
+            assert _current_seq_len(epoch, 1024, 1024, 100, 0) == 1024
+
+    def test_single_epoch_run(self) -> None:
+        """A one-epoch run must not divide by zero."""
+        assert _current_seq_len(0, 2, 1024, 1, 0) == 2
+
+    def test_ramp_of_one_epoch(self) -> None:
+        """ramp_epochs=1 degenerates to one short epoch, then full length.
+
+        (Truly flat runs should set seq_len_start == seq_len_end instead.)
+        """
+        assert _current_seq_len(0, 2, 1024, 100, 1) == 2
+        assert _current_seq_len(1, 2, 1024, 100, 1) == 1024
 
 
 class TestTraining:

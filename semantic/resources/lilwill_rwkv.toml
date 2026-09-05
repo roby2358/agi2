@@ -16,8 +16,9 @@ model_path = "trained/lilwill_rwkv.pt"
 epochs = 100
 batch_size = 32  # halved with the seq_len_end doubling: token budget (batch * seq) unchanged
 learning_rate = 1e-4
-seq_len_start = 2
-seq_len_end = 1024
+seq_len_start = 1024  # flat 1024: dense targets put the short-context lessons
+seq_len_end = 1024    # inside every full window, so the outer ramp is retired
+seq_len_ramp_epochs = 0  # >0 = finish the start->end ramp by that epoch, then hold
 
 # Model architecture (model_head is ignored by RWKV; no attention heads;
 # model_positions is also ignored — RWKV is a recurrence with no positional limit)
