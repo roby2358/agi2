@@ -35,11 +35,8 @@ def _current_seq_len(
 
     ramp_epochs <= 0 spreads the ramp over the whole run; N > 0 completes
     it by epoch N (0-indexed epochs, so epoch N-1 is the first full-length
-    epoch) and holds at seq_len_end after. With dense targets a full-length
-    window already contains every shorter-context lesson, so a short ramp
-    (or none: seq_len_start == seq_len_end) is normally all that's wanted;
-    the ramp remains for early-training stability and as the historical
-    default.
+    epoch) and holds at seq_len_end after. seq_len_start == seq_len_end
+    trains at a constant length regardless.
     """
     span = ramp_epochs if ramp_epochs > 0 else total_epochs
     progress = min(1.0, epoch / max(span - 1, 1))
@@ -104,17 +101,14 @@ def _compute_batch_loss(
 
     With dense_targets (default), EVERY real position's hidden vector must
     predict its next token — one training signal per token, exactly as the
-    causal model computes hidden states anyway. A ~250-token window then
-    yields ~250 signals instead of the single one the original last-position
-    formulation extracted (a ~150x difference over a full run — the
-    dense-tgt-r4mk rationale). The loss is unchanged: all valid (hidden,
-    target-embedding) pairs are flattened into one big observation set, and
-    PairwiseCosineLoss already scales its pair sampling with N.
+    causal model computes hidden states anyway. All valid (hidden, target)
+    pairs are flattened into one big observation set, and PairwiseCosineLoss
+    already scales its pair sampling with N.
 
-    With dense_targets=False (the pre-2026-09-04 control), only the hidden
-    vector at each sample's last real prompt position trains against the
-    held-out target token. Both formulations match generation, which scores
-    the next token from the hidden state at the end of the sequence so far.
+    With dense_targets=False (the control), only the hidden vector at each
+    sample's last real prompt position trains against the held-out target
+    token. Both formulations match generation, which scores the next token
+    from the hidden state at the end of the sequence so far.
 
     InfoNCELoss and CrossEntropyLoss receive the target token IDS (their
     cross-entropy needs the class index); PairwiseCosineLoss receives the
@@ -360,8 +354,11 @@ def train_model(
 
     val_fraction > 0 holds out that fraction of the corpus tail from
     training entirely and reports val_-prefixed held-out metrics every
-    epoch (evaluated at seq_len_end). The history dict is also dumped to
-    trained/<model>_history.json each epoch.
+    epoch (evaluated at seq_len_end), saving the best-val weights to
+    trained/<model>_best.pt as they improve. Early stopping then watches
+    the held-out metric (val_raw_gap) instead of the training raw gap.
+    The history dict is also dumped to trained/<model>_history.json each
+    epoch.
 
     seq_len_ramp_epochs controls how fast seq_len ramps from seq_len_start
     to seq_len_end: 0 (default) spreads the ramp over the whole run, N > 0
@@ -420,6 +417,7 @@ def train_model(
     }
 
     best_loss = float("inf")
+    best_val_loss = float("inf")
     patience_counter = 0
     prev_seq_len = seq_len_start
 
@@ -517,6 +515,22 @@ def train_model(
         if save_path:
             _save_history(history, save_path)
 
+        # Keep the best-generalizing weights: the final checkpoint of a
+        # run may be past the val minimum
+        val_loss = epoch_metrics.get("val_raw_gap")
+        if save_path and val_loss is not None and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            _save_checkpoint(
+                model,
+                optimizer,
+                tokenizer,
+                avg_loss,
+                epoch + 1,
+                f"{_model_name(save_path)}_best",
+                is_final=True,
+            )
+            print(f"New best val (raw gap {val_loss:.4f}) — saved *_best.pt")
+
         print(f"Epoch {epoch + 1} completed in {epoch_time:.2f}s")
         print(f"Average loss: {avg_loss:.4f}")
         for k, v in epoch_metrics.items():
@@ -529,15 +543,22 @@ def train_model(
             print(f"\nEarly stop: raw gap collapsed to {raw_gap:.2e}")
             break
 
-        # Early stop: raw gap plateaued (scale-independent)
-        if raw_gap < best_loss:
-            best_loss = raw_gap
+        # Early stop: plateau on the held-out metric when a val split
+        # exists (the training metric keeps improving during
+        # memorization); otherwise on the training raw gap
+        stop_metric = epoch_metrics.get("val_raw_gap", raw_gap)
+        if stop_metric < best_loss:
+            best_loss = stop_metric
             patience_counter = 0
         else:
             patience_counter += 1
 
         if patience_counter >= early_stop_patience:
-            print(f"\nEarly stop: loss plateaued for {early_stop_patience} epochs")
+            metric_name = "val" if "val_raw_gap" in epoch_metrics else "train"
+            print(
+                f"\nEarly stop: {metric_name} loss plateaued "
+                f"for {early_stop_patience} epochs"
+            )
             break
 
         # Checkpoint every epoch (overwrite previous to save disk)

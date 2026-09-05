@@ -361,6 +361,7 @@ class TestCEObjectiveAndValidation:
             val_keys = [k for k in metrics if k.startswith("val_")]
             assert "val_nce_loss" in val_keys
             assert "val_perplexity" in val_keys
+            assert os.path.exists("trained/test_model_best.pt")
         finally:
             os.remove(corpus_path)
 

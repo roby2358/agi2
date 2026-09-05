@@ -19,7 +19,9 @@ learning_rate = 3e-4
 seq_len_start = 2
 seq_len_end = 1024
 seq_len_ramp_epochs = 0  # 0 = ramp start->end over the whole run; N = finish by epoch N, then hold at seq_len_end
-val_fraction = 0.0  # fraction of corpus tail held out of training; val_* metrics reported each epoch
+val_fraction = 0.0  # fraction of corpus tail held out of training; val_* metrics reported each
+                    # epoch, best-val weights saved to trained/<model>_best.pt, and
+                    # early_stop_patience then watches the val metric instead of the train one
 
 # Model architecture
 model_positions = 1024

@@ -1,8 +1,8 @@
 # lil Will RWKV CE Control - Tiny Shakespeare
-# The plain cross-entropy control for the cosine-training experiment
-# (ce-control-p8vn): identical architecture, data, windows, and epochs to
-# lilwill_rwkv.toml — the ONLY changes are the objective (standard CE over
-# tied-projection logits) and the matching generation settings.
+# The plain cross-entropy control arm for the cosine-training experiment:
+# identical architecture, data, windows, and epochs to lilwill_rwkv.toml —
+# the ONLY differences are the objective (standard CE over tied-projection
+# logits) and the matching generation settings.
 # Usage: uv run python rwkv_train.py resources/lilwill_rwkv_ce.toml
 
 sources = [
@@ -16,8 +16,8 @@ model_name = "lilwill_rwkv_ce"
 model_path = "trained/lilwill_rwkv_ce.pt"
 
 # Training
-epochs = 100
-batch_size = 32
+epochs = 50
+batch_size = 32  # VRAM scales with batch_size * seq_len_end (the token budget)
 learning_rate = 1e-4
 seq_len_start = 1024
 seq_len_end = 1024
@@ -33,7 +33,7 @@ model_activation = "gelu"
 model_dropout = 0.1
 
 # Objective: plain cross-entropy (geometric/anchor/temperature unused)
-early_stop_patience = 100
+early_stop_patience = 10  # epochs without val_raw_gap improvement before stopping
 align_sequences = true
 dense_targets = true
 objective = "ce"

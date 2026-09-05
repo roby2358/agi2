@@ -13,13 +13,13 @@ model_name = "lilwill_rwkv"
 model_path = "trained/lilwill_rwkv.pt"
 
 # Training
-epochs = 100
-batch_size = 32  # halved with the seq_len_end doubling: token budget (batch * seq) unchanged
+epochs = 50
+batch_size = 32  # VRAM scales with batch_size * seq_len_end (the token budget)
 learning_rate = 1e-4
-seq_len_start = 1024  # flat 1024: dense targets put the short-context lessons
-seq_len_end = 1024    # inside every full window, so the outer ramp is retired
+seq_len_start = 1024  # equal start/end: constant-length windows, no ramp
+seq_len_end = 1024
 seq_len_ramp_epochs = 0  # >0 = finish the start->end ramp by that epoch, then hold
-val_fraction = 0.02  # held-out tail for honest perplexity; same split as the ce control
+val_fraction = 0.02  # corpus tail held out for val_* metrics and best-checkpoint selection
 
 # Model architecture (model_head is ignored by RWKV; no attention heads;
 # model_positions is also ignored — RWKV is a recurrence with no positional limit)
@@ -35,7 +35,7 @@ geometric_ratio = 0.7
 anchor_ratio = 0.3
 sigmoid_scale_start = 3.0
 sigmoid_scale_end = 10.0
-early_stop_patience = 100
+early_stop_patience = 10  # epochs without val_raw_gap improvement before stopping
 align_sequences = true  # windows start at <|endoftext|> utterance boundaries
 dense_targets = true    # every position trains against its next token
 objective = "infonce"   # CE over cosine logits (see default.toml); "pairwise" = the control
@@ -53,9 +53,8 @@ resume = ""
 max_length = 300
 temperature = 0.07  # matches nce_temperature — the scale the infonce model was trained at
 beam_size = 3
-repetition_penalty = 0.0  # off — the infonce model doesn't stutter (0.4 was the
-                          # pairwise-era crutch; at temp 0.07 it would also be ~6x stronger)
-no_repeat_ngram_size = 3  # kept as cheap insurance against loops
+repetition_penalty = 0.0  # off; no_repeat_ngram_size handles loop prevention
+no_repeat_ngram_size = 3
 model_seed = """
 Give ear to him whose words our speech did frame, In joy and grief alike, we speak his name.
 """

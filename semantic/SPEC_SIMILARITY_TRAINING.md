@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This system trains language models using pairwise cosine similarity loss in embedding space rather than cross-entropy next-token loss. The embedding matrix is frozen as a static random codebook — the transformer learns to map input contexts to fixed points in this space, preserving the geometric relationships between token embeddings.
+This system trains language models with cosine-similarity-family objectives in embedding space rather than standard next-token logits. The embedding matrix is randomly initialized and trains with the model; the transformer learns to map input contexts to points in this space, preserving the geometric relationships between token embeddings. (A frozen-codebook variant — `freeze_embeddings` — is planned to test the static-codebook design; decision history and experiment results live in ARCHITECTURE_LOG.md.)
 
 The core thesis: training on geometric relationship preservation in embedding space — rather than discrete token identity — yields models with stronger analogical reasoning and compositional generalization. Cross-entropy treats the vocabulary as an unstructured set where "almost right" and "completely wrong" are penalized identically. Cosine similarity operates on the same manifold where semantic arithmetic works (king - man + woman = queen), directly rewarding the model for maintaining geometric relationships between meanings.
 
@@ -10,10 +10,10 @@ The loss is not "how close is the model's output to the right answer." It is "do
 
 ## Key Design Decisions
 
-- **Frozen embedding matrix**: The token embedding matrix is initialized randomly and frozen. It serves as a static codebook — a fixed coordinate system that the transformer must learn to target. This eliminates embedding collapse risk and provides a stable, non-moving target for training.
-- **Geometric relationship preservation, not absolute loss**: The system compares the cosine similarity between pairs of model outputs against the cosine similarity between the corresponding frozen token embeddings. The loss is the squared discrepancy between these two similarities.
+- **Random-init, trainable embedding matrix**: The token embedding matrix is initialized randomly and trains with the model. The planned `freeze_embeddings` variant freezes it as a static codebook — a fixed coordinate system the transformer must learn to target, eliminating collapse risk and providing a stable target (see "Frozen Embedding Rationale").
+- **Geometric relationship preservation, not absolute loss**: The system compares the cosine similarity between pairs of model outputs against the cosine similarity between the corresponding token embeddings. The loss is the squared discrepancy between these two similarities.
 - **Two pair types per batch**: Each batch includes geometric pairs (hidden state vs. hidden state) and anchor pairs (hidden state vs. raw embedding). Geometric pairs teach relationships. Anchor pairs keep hidden states aligned to the embedding space for inference.
-- **Only the last hidden vector**: The training loop uses only the final hidden state at the last target position. Intermediate hidden states are not compared — we don't care how the model gets there, only where it lands.
+- **Dense per-position targets**: Every real position's hidden state trains against its next token (`dense_targets = true`) — one training signal per token, matching the hidden states a causal model computes anyway. `dense_targets = false` selects the last-position-only control, where each window trains only its final hidden vector.
 - **Cosine similarity as distance metric**: The loss operates in the same space where semantic arithmetic works. The model is directly optimized for semantic fidelity, not token identity.
 - **No separate reward model**: Quality signal comes directly from cosine similarity to known-good text, eliminating the reward model training stage required by RLHF.
 
@@ -21,22 +21,22 @@ The loss is not "how close is the model's output to the right answer." It is "do
 
 ### Loss Function
 
-The loss measures how well the model's output vectors preserve the geometric relationships defined by the frozen embedding matrix. For any two vectors X and Y, the pairwise loss is:
+The loss measures how well the model's output vectors preserve the geometric relationships defined by the embedding matrix. For any two vectors X and Y, the pairwise loss is:
 
     loss(X, Y) = (sim(X', Y') - sim(X, Y))²
 
-where X and Y are the known-good token embeddings from the frozen codebook and X' and Y' are the corresponding model outputs or embeddings being compared.
+where X and Y are the known-good token embeddings from the codebook and X' and Y' are the corresponding model outputs or embeddings being compared.
 
 Each mini-batch MUST include two types of pairs:
 
 #### Geometric Pairs (ratio: 0.7)
 
-- The system MUST compute `(sim(A', B') - sim(A, B))²` where A' and B' are the model's last hidden states for two observations and A and B are the corresponding frozen token embeddings
+- The system MUST compute `(sim(A', B') - sim(A, B))²` where A' and B' are the model's last hidden states for two observations and A and B are the corresponding token embeddings
 - These pairs teach the model to preserve inter-token geometric relationships in its output space
 
 #### Anchor Pairs (ratio: 0.3)
 
-- The system MUST compute `(sim(A', E_k) - sim(A, E_k))²` where A' is the model's last hidden state, A is the frozen token embedding, and E_k is a randomly sampled token embedding from the frozen vocabulary matrix
+- The system MUST compute `(sim(A', E_k) - sim(A, E_k))²` where A' is the model's last hidden state, A is the token embedding, and E_k is a randomly sampled token embedding from the vocabulary matrix
 - These pairs anchor the model's hidden states to the embedding space, preventing the output geometry from rotating away from the embedding matrix
 - Without anchor pairs, the model could learn a valid but rotated geometry that makes nearest-neighbor token selection at inference time impossible
 
@@ -44,23 +44,23 @@ Each mini-batch MUST include two types of pairs:
 
 - The system MUST NOT apply any activation function (sigmoid, softmax) to the model's hidden state before computing cosine similarity — the comparison operates on raw embedding geometry
 - The system SHOULD reuse forward pass activations across pairs within a mini-batch rather than recomputing — each observation's hidden state is independent of its pair partner, so N observations require N forward passes regardless of pairing count
-- Embedding pairs are unnecessary because the embedding matrix is frozen — collapse is impossible when embeddings cannot move
+- Embedding pairs are unnecessary; in the `freeze_embeddings` variant collapse is structurally impossible since embeddings cannot move
 
 ### Training
 
-- The system MUST train on (prompt, single next token) pairs
-- The system MUST use only the last hidden vector (the final position of the target token after running through the transformer) for loss computation
-- The system MUST NOT aggregate intermediate hidden states — only the final vector matters
+- The system trains on token windows that start at `<|endoftext|>` utterance boundaries when the tokenizer defines one (`align_sequences`, with stride fill across marker-less stretches); windows may cross boundaries
+- With `dense_targets = true` (default), every real position's hidden state trains against its next token; `false` restores the last-position-only formulation as a control
+- `val_fraction` > 0 holds a boundary-aligned corpus tail out of training entirely: held-out metrics are reported per epoch, the best-val checkpoint is kept (`trained/<model>_best.pt`), and early stopping watches the held-out metric
 
 ### Inference-Time Token Selection
 
-- At inference time, the system MUST compute cosine similarity between the model's output hidden state and every token embedding in the frozen vocabulary matrix to produce a score distribution over tokens
+- At inference time, the system MUST compute cosine similarity between the model's output hidden state and every token embedding in the vocabulary matrix to produce a score distribution over tokens
 - This nearest-neighbor selection works because anchor pairs during training keep the model's hidden states aligned to the embedding space
 - The system MUST support sampling (softmax over similarity scores with temperature) for token selection
 - The system SHOULD apply a temperature parameter to the similarity scores before softmax to control generation diversity
 - The system MUST use `torch.inference_mode()` during generation
 
-### Frozen Embedding Rationale
+### Frozen Embedding Rationale (`freeze_embeddings` variant — planned, not the default)
 
 In standard transformers, the embedding matrix is learned during training. Similar tokens like "cat" and "dog" move closer together, so the attention/feed-forward mechanism doesn't have to do that work — the structure is "priced in" to the embeddings.
 
@@ -79,8 +79,8 @@ Direct Preference Optimization (DPO, Rafailov et al. 2023) is the closest existi
 |--------|-----|-------------|
 | Comparison metric | Log-probability ratios | Cosine similarity in embedding space |
 | Base model dependency | Requires cross-entropy-pretrained base | Trains from scratch |
-| Quality signal source | Human preference labels | Geometric fidelity to frozen codebook |
-| Embedding matrix | Learned (co-evolves with model) | Frozen (static random codebook) |
+| Quality signal source | Human preference labels | Geometric fidelity to the embedding codebook |
+| Embedding matrix | Learned (co-evolves with model) | Random-init, trainable (frozen-codebook variant planned) |
 | What it optimizes | Token probability distributions | Preservation of semantic geometry |
 | Pair semantics | Good vs. bad response | Two valid observations, geometric comparison |
 
@@ -106,11 +106,9 @@ Pairwise similarity discards absolute confidence. Cross-entropy produces calibra
 
 - The system MAY apply post-hoc calibration to map embedding distances to calibrated confidence scores
 
-### InfoNCE Objective (2026-09-04)
+### InfoNCE Objective
 
-The concern above was observed in practice: the lilwill_rwkv runs produced representations that ranked correct tokens highly (e.g. `<|endoftext|>` in the top 3 at true utterance ends) while the cosine-softmax assigned them ~2% probability — the sigmoid-gap loss pulls hidden states toward targets but exerts almost no downward pressure on the other vocab entries, so scores stay packed and sampling looks near-random.
-
-The `objective = "infonce"` training mode addresses this within the cosine framework rather than abandoning it:
+The `objective = "infonce"` training mode provides contrastive normalization within the cosine framework (the sigmoid-gap loss exerts almost no downward pressure on non-target vocab entries; see ARCHITECTURE_LOG.md for the measurements that motivated this mode):
 
 - Logits are the cosine similarities between the hidden state and EVERY vocab embedding, divided by `nce_temperature` (default 0.07; cosine spans [-1, 1], giving logits in roughly [-14, 14])
 - The loss is standard cross-entropy (NLL of the true next token) over those logits — InfoNCE. Raising the target's probability necessarily pushes all wrong tokens down through the softmax normalization
@@ -118,7 +116,13 @@ The `objective = "infonce"` training mode addresses this within the cosine frame
 - Training then optimizes exactly the distribution generation samples from (generation already scores by cosine-softmax); after InfoNCE training, a generation temperature near `nce_temperature` reproduces the trained distribution
 - `objective = "pairwise"` remains the default and the research control; metrics for InfoNCE report `nce_loss`, `perplexity`, and `top1_acc`, with `raw_gap` aliased to `nce_loss` for the existing early-stop machinery
 
+### Cross-Entropy Control Objective
+
+The `objective = "ce"` training mode is the standard-LM baseline: plain cross-entropy over tied-projection logits (the unnormalized dot products `model.forward` computes), with no temperature and no auxiliary terms, on the same dense-target machinery. Because only the objective differs, any quality gap against the cosine modes measures the objective alone. Generation for a CE model uses `scoring = "logits"` (sampling from the logit projection at ordinary temperature) instead of cosine scores.
+
 ## Validation Plan: GPT-2 on Shakespeare
+
+> Results of the CE-vs-InfoNCE control experiment are recorded in ARCHITECTURE_LOG.md.
 
 ### Rationale
 

@@ -114,8 +114,8 @@ class PairwiseCosineLoss(nn.Module):
 
         Args:
             hidden_states: Last hidden states from model (batch_size, n_embd)
-            target_embeddings: Frozen codebook embeddings (batch_size, n_embd)
-            embedding_weight: Frozen vocab embedding matrix (vocab_size, n_embd)
+            target_embeddings: Codebook embeddings of the targets (batch_size, n_embd)
+            embedding_weight: Vocab embedding matrix (vocab_size, n_embd)
 
         Returns:
             Tuple of (total_loss, metrics_dict).
@@ -166,7 +166,7 @@ class PairwiseCosineLoss(nn.Module):
 class CrossEntropyLoss(PairwiseCosineLoss):
     """
     Plain cross-entropy over tied-projection logits — the standard-LM
-    control for the cosine-training experiment (ce-control-p8vn).
+    control for the cosine-training experiment.
 
     Logits are the unnormalized dot products between hidden states and the
     embedding matrix — exactly what model.forward computes for a

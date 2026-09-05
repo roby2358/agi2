@@ -15,10 +15,10 @@ Updated: 2026-09-04T19:10:00Z
 agi2/semantic: InfoNCE objective — cross-entropy over cosine logits. The current sigmoid-gap loss pulls hidden states toward target embeddings but exerts almost no downward pressure on the 4,095 wrong tokens (only sampled pairs), so cosine scores stay packed and sampling looks random even when the representation knows the answer (measured: <|endoftext|> ranks top-3 at true utterance ends but p≈0.018 under the softmax). Replace (or make selectable alongside) the geometric/anchor loss: logits = cosine(hidden, every vocab embedding) / learnable-or-config temperature, then standard NLL against the true next token — this IS cosine-similarity training with proper contrastive normalization (InfoNCE), and it makes training optimize exactly what generation samples from (generation already scores by cosine-softmax). Keep the geometric term available as an auxiliary (config ratio). Requires dense-tgt-r4mk (per-position targets) to be worthwhile. Expected effects: sharper sampling distribution, coherent word boundaries, EOT stopping firing naturally, less need for repetition penalty. TOML: objective = "infonce" | "pairwise", nce_temperature. Update SPEC_SIMILARITY_TRAINING.md with the rationale and keep the pairwise path as the research control.
 ----
 Priority:   90
-Status: ToDo
+Status: Done
 ID: ce-control-p8vn
 Created: 2026-09-04T18:05:00Z
-Updated: 2026-09-04T18:05:00Z
+Updated: 2026-09-05T18:30:00Z
 
 agi2/semantic: plain cross-entropy control run — the missing baseline for the cosine-training experiment. Same architecture (RWKVModel and/or AGI2Model), standard logits (model.forward already projects to vocab) + F.cross_entropy on per-position next tokens, identical data/curriculum/epochs as lilwill_rwkv. Deliverables: a ce (or objective = "ce") training path sharing the dense-target machinery from dense-tgt-r4mk, a trained control checkpoint, held-out perplexity for both models, and a side-by-side sample comparison. Reference expectation: nanoGPT-tiny at this scale (~1M-token Shakespeare corpus, ~10M params) produces recognizable pseudo-Shakespeare — if the control reaches that and the cosine models do not, the gap measures what the cosine objective costs; if it does not, the bottleneck is elsewhere (data/architecture). Do not retire the cosine path — the point is to quantify it, not replace it.
 ----
@@ -42,6 +42,22 @@ ID: script-merge-gfst
 
 Combine the agi2_* scripts into a single script with a command parameter
 ----
+Priority:   76
+Status: ToDo
+ID: freeze-emb-t3kq
+Created: 2026-09-05T18:45:00Z
+Updated: 2026-09-05T18:45:00Z
+
+agi2/semantic: frozen-codebook third arm — test the spec's ORIGINAL thesis for the first time. The 2026-09-05 CE-vs-InfoNCE control established that embeddings were never actually frozen (AdamW receives model.parameters() in full and gradients flow into the embedding matrix through the InfoNCE logits), so both arms trained learned embeddings and the frozen-random-codebook design has never been run. Add a freeze_embeddings TOML flag (default false): when true, set token_embeddings.embedding.weight.requires_grad_(False) and exclude it from the optimizer param group. Run as a third arm vs the existing two: lilwill_rwkv config, objective = "infonce", ~30-50 epochs with val early stop (~50 min). Compare best val perplexity vs learned-embedding InfoNCE (165.0 @ epoch 32) and CE (155.8 @ epoch 30). Outcome updates SPEC_SIMILARITY_TRAINING.md either way: frozen within noise of learned = thesis holds (transformer does all the geometric work); frozen clearly worse = learned embeddings were quietly load-bearing.
+-----
+Priority:   72
+Status: ToDo
+ID: lr-sched-v8mw
+Created: 2026-09-05T18:45:00Z
+Updated: 2026-09-05T18:45:00Z
+
+agi2/semantic: learning-rate schedule. train_model runs flat AdamW lr with no warmup or decay — the crudest choice, and it likely both raises and hastens the overfitting minimum (both 2026-09-05 arms bottomed at epoch ~30). Add warmup (~2-5% of steps, linear from 0) + cosine decay to ~lr/10 over the scheduled epochs, via torch.optim.lr_scheduler (SequentialLR of LinearLR + CosineAnnealingLR or a small lambda). TOML: lr_schedule = "cosine" | "constant" (default constant for backward compat), lr_warmup_epochs. Step per epoch is sufficient at this scale. Log the current lr in the epoch banner and history metrics. Note resume caveat: optimizer state is not restored on resume, so the schedule restarts too — document it. Update tests/test_training.py.
+-----
 Priority:   80
 Status: ToDo
 ID: corpus-f8d8
