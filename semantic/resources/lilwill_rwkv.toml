@@ -14,13 +14,14 @@ model_path = "trained/lilwill_rwkv.pt"
 
 # Training
 epochs = 100
-batch_size = 64
+batch_size = 32  # halved with the seq_len_end doubling: token budget (batch * seq) unchanged
 learning_rate = 1e-4
 seq_len_start = 2
-seq_len_end = 512
+seq_len_end = 1024
 
-# Model architecture (model_head is ignored by RWKV; no attention heads)
-model_positions = 512
+# Model architecture (model_head is ignored by RWKV; no attention heads;
+# model_positions is also ignored — RWKV is a recurrence with no positional limit)
+model_positions = 1024
 model_embd = 384
 model_layer = 6
 model_head = 6
@@ -57,4 +58,4 @@ model_seed = """
 Give ear to him whose words our speech did frame, In joy and grief alike, we speak his name.
 """
 
-max_context_length = 512
+max_context_length = 1024
