@@ -198,10 +198,10 @@ Implementation requirements:
 - Merge functionality to combine LoRA weights with base model
 ----
 Priority:   65
-Status: ToDo
+Status: Done
 ID: train-log-m3xa
 Created: 2026-09-05T04:25:00Z
-Updated: 2026-09-05T04:25:00Z
+Updated: 2026-09-05T06:30:00Z
 
 agi2/semantic: persist training runs. train_model only prints to stdout, so a run's per-epoch history is lost unless the user remembered to tee (the 2026-09-05 infonce milestone run's curve lives only in terminal scrollback). Add: (1) a plain-text log of everything currently printed, written to logs/train-<model>-<timestamp>.log (create logs/, gitignore it) alongside stdout; (2) the history dict train_model already builds (train_loss, epoch_times, metrics per epoch) dumped as trained/<model>_history.json next to the final checkpoint on every epoch (overwrite, crash-safe), so curves can be plotted and runs compared after the fact. No new dependencies — a tee-style writer and json.dump. Update tests/test_training.py.
 ----

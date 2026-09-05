@@ -319,3 +319,60 @@ class TestTraining:
         finally:
             if os.path.exists(corpus_path):
                 os.remove(corpus_path)
+
+
+class TestCEObjectiveAndValidation:
+    """The ce objective and val_fraction ride the same train_model machinery."""
+
+    setup_method = TestTraining.setup_method
+    teardown_method = TestTraining.teardown_method
+    _train = TestTraining._train
+
+    def _corpus(self) -> str:
+        corpus_path = "temp_corpus.txt"
+        with open(corpus_path, "w") as f:
+            f.write("test text for training " * 100)
+        return corpus_path
+
+    def test_ce_objective_trains(self) -> None:
+        corpus_path = self._corpus()
+        try:
+            history = self._train(corpus_path, objective="ce")
+            metrics = history["metrics"][0]
+            assert "ce_loss" in metrics
+            assert "perplexity" in metrics
+            assert metrics["ce_loss"] > 0.0
+        finally:
+            os.remove(corpus_path)
+
+    def test_unknown_objective_rejected(self) -> None:
+        corpus_path = self._corpus()
+        try:
+            with pytest.raises(ValueError, match="Unknown objective"):
+                self._train(corpus_path, objective="nope")
+        finally:
+            os.remove(corpus_path)
+
+    def test_val_fraction_reports_holdout_metrics(self) -> None:
+        corpus_path = self._corpus()
+        try:
+            history = self._train(corpus_path, objective="infonce", val_fraction=0.1)
+            metrics = history["metrics"][0]
+            val_keys = [k for k in metrics if k.startswith("val_")]
+            assert "val_nce_loss" in val_keys
+            assert "val_perplexity" in val_keys
+        finally:
+            os.remove(corpus_path)
+
+    def test_history_json_written_each_epoch(self) -> None:
+        import json
+
+        corpus_path = self._corpus()
+        try:
+            history = self._train(corpus_path, epochs=2)
+            with open("trained/test_model_history.json") as f:
+                dumped = json.load(f)
+            assert dumped["train_loss"] == history["train_loss"]
+            assert len(dumped["metrics"]) == 2
+        finally:
+            os.remove(corpus_path)

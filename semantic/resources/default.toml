@@ -19,6 +19,7 @@ learning_rate = 3e-4
 seq_len_start = 2
 seq_len_end = 1024
 seq_len_ramp_epochs = 0  # 0 = ramp start->end over the whole run; N = finish by epoch N, then hold at seq_len_end
+val_fraction = 0.0  # fraction of corpus tail held out of training; val_* metrics reported each epoch
 
 # Model architecture
 model_positions = 1024
@@ -44,10 +45,12 @@ align_sequences = true
 # original one-signal-per-window last-position formulation as a control.
 dense_targets = true
 
-# Training objective: "pairwise" (sigmoid-gap geometric+anchor loss) or
+# Training objective: "pairwise" (sigmoid-gap geometric+anchor loss),
 # "infonce" (cross-entropy over cosine logits — cosine training with
 # contrastive normalization; the geometric term stays as an auxiliary
-# weighted by geometric_ratio, anchor_ratio is unused). nce_temperature
+# weighted by geometric_ratio, anchor_ratio is unused), or "ce" (plain
+# cross-entropy over tied-projection logits — the standard-LM control;
+# all cosine knobs unused, pair with scoring = "logits"). nce_temperature
 # divides the cosine logits: cosine spans [-1, 1], so 0.07 gives logits
 # in roughly [-14, 14]. After infonce training, generation temperature
 # near nce_temperature reproduces the trained distribution.
@@ -74,6 +77,7 @@ resume = false   # Path to checkpoint, or false
 max_length = 100
 temperature = 0.8
 beam_size = 5
+scoring = "cosine"  # "cosine" for pairwise/infonce models, "logits" for ce models
 model_seed = """
 The following is a conversation between a helpful AI assistant and a user. The AI is knowledgeable, creative, and always tries to provide useful and engaging responses.
 """

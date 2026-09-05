@@ -1,0 +1,60 @@
+# lil Will RWKV CE Control - Tiny Shakespeare
+# The plain cross-entropy control for the cosine-training experiment
+# (ce-control-p8vn): identical architecture, data, windows, and epochs to
+# lilwill_rwkv.toml — the ONLY changes are the objective (standard CE over
+# tied-projection logits) and the matching generation settings.
+# Usage: uv run python rwkv_train.py resources/lilwill_rwkv_ce.toml
+
+sources = [
+    "../samples/shakespeare_dialogue.txt",
+    "resources/training/corpus20.txt"
+]
+
+tokenizer = "bpe"
+bpe_vocab_size = 4096
+model_name = "lilwill_rwkv_ce"
+model_path = "trained/lilwill_rwkv_ce.pt"
+
+# Training
+epochs = 100
+batch_size = 32
+learning_rate = 1e-4
+seq_len_start = 1024
+seq_len_end = 1024
+seq_len_ramp_epochs = 0
+val_fraction = 0.02  # same held-out tail as the infonce arm
+
+# Model architecture (identical to lilwill_rwkv.toml)
+model_positions = 1024
+model_embd = 384
+model_layer = 6
+model_head = 6
+model_activation = "gelu"
+model_dropout = 0.1
+
+# Objective: plain cross-entropy (geometric/anchor/temperature unused)
+early_stop_patience = 100
+align_sequences = true
+dense_targets = true
+objective = "ce"
+
+# Performance
+use_compile = false
+use_amp = false
+
+# Device and resume
+device = "cuda"
+resume = ""
+
+# Generation: a CE model samples from its logits at ordinary temperature
+max_length = 300
+temperature = 1.0
+scoring = "logits"
+beam_size = 3
+repetition_penalty = 0.0
+no_repeat_ngram_size = 3
+model_seed = """
+Give ear to him whose words our speech did frame, In joy and grief alike, we speak his name.
+"""
+
+max_context_length = 1024

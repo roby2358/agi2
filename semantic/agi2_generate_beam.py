@@ -38,6 +38,7 @@ def main(model_cls=AGI2Model):
     temperature = get_config_value(config, "temperature", 0.8)
     device_choice = get_config_value(config, "device", "auto")
     model_seed = get_config_value(config, "model_seed", "")
+    scoring = get_config_value(config, "scoring", "cosine")
 
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
@@ -73,6 +74,7 @@ def main(model_cls=AGI2Model):
         tokenizer,
         device,
         allowed_mask,
+        scoring=scoring,
     )
 
     print("Generated text (beam search):")

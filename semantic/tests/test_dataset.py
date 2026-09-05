@@ -171,3 +171,75 @@ class TestBoundaryAlignment:
         tokens = [10, 11, 99, 20, 21, 99, 30, 31]
         dataset = self._dataset(tokens, 5, 99)
         assert dataset.get_corpus_stats()["utterance_boundaries"] == 3
+
+
+class TestValidationSplit:
+    """val_fraction holds out a boundary-aligned corpus tail from training."""
+
+    class IdTokenizer:
+        vocab_size = 100
+
+        def encode(self, text: str) -> list[int]:
+            return [int(t) for t in text.split()]
+
+    def _dataset(
+        self, tokens: list[int], seq_len: int, boundary, val_fraction: float
+    ) -> TextDataset:
+        temp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
+        temp.write(" ".join(str(t) for t in tokens))
+        temp.close()
+        try:
+            return TextDataset(
+                temp.name, self.IdTokenizer(), seq_len, boundary, val_fraction
+            )
+        finally:
+            os.unlink(temp.name)
+
+    def test_default_no_holdout(self) -> None:
+        tokens = list(range(50))
+        dataset = self._dataset(tokens, 10, None, 0.0)
+        stats = dataset.get_corpus_stats()
+        assert stats["train_tokens"] == 50
+        assert stats["val_tokens"] == 0
+        assert dataset.val_windows(10) == []
+
+    def test_cut_snaps_to_boundary(self) -> None:
+        # Boundaries (id 99) after positions 9, 19, 29, 39; 20% target
+        # cut = 40, which is already an utterance start (position 40).
+        tokens = []
+        for utterance in range(5):
+            tokens.extend([1, 2, 3, 4, 5, 6, 7, 8, 9, 99])
+        dataset = self._dataset(tokens, 6, 99, 0.2)
+        assert dataset._train_end == 40
+
+    def test_train_sequences_stay_out_of_val(self) -> None:
+        # Distinct token values encode positions (value = position + 1), so
+        # a training window that touched the held-out tail would show a
+        # value above the cut.
+        tokens = list(range(1, 51))
+        dataset = self._dataset(tokens, 6, None, 0.2)
+        cut = dataset._train_end
+        assert cut < len(tokens)
+        for seq in dataset.sequences:
+            assert max(seq["prompt_ids"] + seq["target_ids"]) <= cut
+
+    def test_val_windows_cover_tail(self) -> None:
+        tokens = list(range(1, 41))
+        dataset = self._dataset(tokens, 6, None, 0.25)
+        cut = dataset._train_end
+        windows = dataset.val_windows(6)
+        assert windows
+        covered = []
+        for w in windows:
+            covered.extend(w["prompt_ids"].tolist())
+        # Prompts tile the held-out region without overlap
+        assert covered == tokens[cut : len(tokens) - 1]
+
+    def test_set_seq_len_preserves_holdout(self) -> None:
+        tokens = list(range(1, 61))
+        dataset = self._dataset(tokens, 6, None, 0.2)
+        cut = dataset._train_end
+        dataset.set_seq_len(12)
+        assert dataset._train_end == cut
+        for seq in dataset.sequences:
+            assert len(seq["prompt_ids"]) + len(seq["target_ids"]) <= cut

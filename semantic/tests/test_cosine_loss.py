@@ -2,7 +2,7 @@
 
 import pytest
 import torch
-from src.cosine_loss import InfoNCELoss, PairwiseCosineLoss
+from src.cosine_loss import CrossEntropyLoss, InfoNCELoss, PairwiseCosineLoss
 
 
 class TestPairwiseCosineLoss:
@@ -206,5 +206,59 @@ class TestInfoNCELoss:
         emb = torch.randn(10, 4)
         h = torch.zeros(1, 4)
         loss, metrics = self._loss()(h, torch.tensor([0]), emb)
+        assert loss.item() == 0.0
+        assert metrics["valid_observations"] == 0
+
+
+class TestCrossEntropyLoss:
+    """Test cases for the plain-CE control objective."""
+
+    def setup_method(self) -> None:
+        self.loss_fn = CrossEntropyLoss()
+        self.n_embd = 32
+        self.vocab_size = 100
+
+    def test_basic_forward(self) -> None:
+        h = torch.randn(8, self.n_embd, requires_grad=True)
+        targets = torch.randint(0, self.vocab_size, (8,))
+        weight = torch.randn(self.vocab_size, self.n_embd)
+        loss, metrics = self.loss_fn(h, targets, weight)
+        assert loss.requires_grad
+        assert metrics["ce_loss"] == pytest.approx(loss.item())
+        assert metrics["raw_gap"] == pytest.approx(loss.item())
+        assert metrics["perplexity"] == pytest.approx(
+            torch.exp(loss.detach()).item(), rel=1e-4
+        )
+        assert 0.0 <= metrics["top1_acc"] <= 1.0
+        assert metrics["valid_observations"] == 8
+
+    def test_aligned_hidden_low_loss(self) -> None:
+        # Hidden states pointing hard at their target embedding rows must
+        # score near-perfect top1 and much lower loss than random ones.
+        weight = torch.randn(self.vocab_size, self.n_embd)
+        targets = torch.arange(8)
+        h_good = weight[targets] * 10.0
+        h_rand = torch.randn(8, self.n_embd)
+        loss_good, metrics_good = self.loss_fn(h_good, targets, weight)
+        loss_rand, _ = self.loss_fn(h_rand, targets, weight)
+        assert loss_good.item() < loss_rand.item()
+        assert metrics_good["top1_acc"] == pytest.approx(1.0)
+
+    def test_gradient_flows_to_embeddings(self) -> None:
+        # Unlike the frozen-codebook spec, embeddings train in the CE
+        # control — the loss must propagate to them.
+        weight = torch.randn(self.vocab_size, self.n_embd, requires_grad=True)
+        h = torch.randn(8, self.n_embd, requires_grad=True)
+        targets = torch.randint(0, self.vocab_size, (8,))
+        loss, _ = self.loss_fn(h, targets, weight)
+        loss.backward()
+        assert h.grad is not None
+        assert weight.grad is not None
+
+    def test_empty_batch(self) -> None:
+        h = torch.zeros(0, self.n_embd)
+        targets = torch.zeros(0, dtype=torch.long)
+        weight = torch.randn(self.vocab_size, self.n_embd)
+        loss, metrics = self.loss_fn(h, targets, weight)
         assert loss.item() == 0.0
         assert metrics["valid_observations"] == 0

@@ -86,20 +86,29 @@ def _hidden_to_scores(
     model: torch.nn.Module,
     input_ids: torch.Tensor,
     temperature: float,
+    scoring: str = "cosine",
 ) -> torch.Tensor:
-    """Compute token scores from the last hidden state via cosine similarity.
+    """Compute next-token scores from the last hidden state.
 
-    Returns a (vocab_size,) tensor of similarity scores scaled by temperature.
+    scoring="cosine" (default) scores by cosine similarity against the
+    embedding matrix — matches the cosine-family training objectives, whose
+    natural sampling temperature is nce_temperature (~0.07). scoring="logits"
+    uses the model's standard logit projection — for objective="ce" models,
+    whose natural temperature is ~1.0.
+
+    Returns a (vocab_size,) tensor of scores scaled by temperature.
     """
     hidden_states = model._run_transformer(input_ids)
-    last_hidden = hidden_states[0, -1, :]  # (n_embd,)
 
-    emb_weight = model.token_embeddings.embedding.weight  # (vocab_size, n_embd)
-
-    # Cosine similarity between hidden state and every token embedding
-    scores = F.cosine_similarity(
-        last_hidden.unsqueeze(0), emb_weight, dim=-1
-    )  # (vocab_size,)
+    scores: torch.Tensor
+    if scoring == "logits":
+        scores = model._project_to_logits(hidden_states)[0, -1, :]  # (vocab_size,)
+    else:
+        last_hidden = hidden_states[0, -1, :]  # (n_embd,)
+        emb_weight = model.token_embeddings.embedding.weight  # (vocab_size, n_embd)
+        scores = F.cosine_similarity(
+            last_hidden.unsqueeze(0), emb_weight, dim=-1
+        )  # (vocab_size,)
 
     return scores / temperature
 
@@ -182,6 +191,7 @@ def generate_text(
     allowed_mask: Optional[torch.Tensor] = None,
     repetition_penalty: float = 0.0,
     no_repeat_ngram_size: int = 0,
+    scoring: str = "cosine",
 ) -> str:
     """
     Generate text from a prompt using cosine similarity scoring.
@@ -202,6 +212,8 @@ def generate_text(
             suggested 0.3-0.5 at temperature 0.3)
         no_repeat_ngram_size: Hard-ban tokens completing an n-gram already
             in the sequence (0 = off)
+        scoring: "cosine" (cosine-similarity scores, for the cosine-family
+            objectives) or "logits" (standard logit projection, for ce)
 
     Returns:
         Generated text string
@@ -218,7 +230,7 @@ def generate_text(
 
     with torch.inference_mode():
         for _ in range(max_length):
-            scores = _hidden_to_scores(model, generated_ids, temperature)
+            scores = _hidden_to_scores(model, generated_ids, temperature, scoring)
 
             if allowed_mask is not None:
                 scores = scores.masked_fill(~allowed_mask, -float("inf"))
@@ -260,6 +272,7 @@ def generate_with_beam_search(
     tokenizer: BasicTokenizer,
     device: str,
     allowed_mask: Optional[torch.Tensor] = None,
+    scoring: str = "cosine",
 ) -> List[str]:
     """
     Generate text using beam search with cosine similarity scoring.
@@ -290,7 +303,7 @@ def generate_with_beam_search(
             new_beams: list[tuple[torch.Tensor, float]] = []
 
             for beam_seq, beam_score in beams:
-                scores = _hidden_to_scores(model, beam_seq, temperature)
+                scores = _hidden_to_scores(model, beam_seq, temperature, scoring)
                 if allowed_mask is not None:
                     scores = scores.masked_fill(~allowed_mask, -float("inf"))
                 top_scores, top_indices = torch.topk(

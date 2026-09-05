@@ -6,6 +6,7 @@ Only the hidden vector at the last prompt position is compared — it must
 land near the embedding of the next (unseen) target token.
 """
 
+import json
 import logging
 import os
 import time
@@ -17,7 +18,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from .cosine_loss import InfoNCELoss, PairwiseCosineLoss
+from .cosine_loss import CrossEntropyLoss, InfoNCELoss, PairwiseCosineLoss
 from .dataset import TextDataset
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,9 @@ def _compute_batch_loss(
     held-out target token. Both formulations match generation, which scores
     the next token from the hidden state at the end of the sequence so far.
 
-    An InfoNCELoss receives the target token IDS (its cross-entropy needs
-    the class index); PairwiseCosineLoss receives the target embeddings.
+    InfoNCELoss and CrossEntropyLoss receive the target token IDS (their
+    cross-entropy needs the class index); PairwiseCosineLoss receives the
+    target embeddings.
     """
     _, hidden_states = model.forward_hidden(prompt_ids)
     embedding_weight = model.token_embeddings.embedding.weight
@@ -132,7 +134,8 @@ def _compute_batch_loss(
         h = hidden_states[batch_index, last_prompt_pos, :]
         ids = target_ids[:, 0]
 
-    target = ids if isinstance(loss_fn, InfoNCELoss) else embedding_weight[ids]
+    id_targets = isinstance(loss_fn, (InfoNCELoss, CrossEntropyLoss))
+    target = ids if id_targets else embedding_weight[ids]
     return loss_fn(h, target, embedding_weight)
 
 
@@ -266,6 +269,34 @@ def train_epoch(
     return avg_metrics
 
 
+def _evaluate(
+    model: nn.Module,
+    val_batches: List[Dict[str, torch.Tensor]],
+    loss_fn: PairwiseCosineLoss,
+    device: torch.device,
+    dense_targets: bool,
+) -> Dict[str, float]:
+    """Held-out metrics (val_-prefixed) over pre-collated validation batches."""
+    model.eval()
+    totals: Dict[str, float] = {}
+    num_batches = 0
+    with torch.no_grad():
+        for batch in val_batches:
+            _, metrics = _compute_batch_loss(
+                model,
+                batch["prompt_ids"].to(device),
+                batch["prompt_mask"].to(device),
+                batch["target_ids"].to(device),
+                loss_fn,
+                dense_targets,
+            )
+            for k, v in metrics.items():
+                totals[k] = totals.get(k, 0.0) + v
+            num_batches += 1
+    model.train()
+    return {f"val_{k}": v / max(num_batches, 1) for k, v in totals.items()}
+
+
 def _build_dataloader(
     dataset: TextDataset,
     batch_size: int,
@@ -311,6 +342,7 @@ def train_model(
     objective: str = "pairwise",
     nce_temperature: float = 0.07,
     seq_len_ramp_epochs: int = 0,
+    val_fraction: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
@@ -325,6 +357,11 @@ def train_model(
 
     Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
     over the training run, gradually tightening tolerances as the model improves.
+
+    val_fraction > 0 holds out that fraction of the corpus tail from
+    training entirely and reports val_-prefixed held-out metrics every
+    epoch (evaluated at seq_len_end). The history dict is also dumped to
+    trained/<model>_history.json each epoch.
 
     seq_len_ramp_epochs controls how fast seq_len ramps from seq_len_start
     to seq_len_end: 0 (default) spreads the ramp over the whole run, N > 0
@@ -348,17 +385,32 @@ def train_model(
         if isinstance(vocab, dict):
             boundary_token = vocab.get("<|endoftext|>")
 
-    dataset = TextDataset(sources, tokenizer, seq_len_start, boundary_token)
+    dataset = TextDataset(
+        sources, tokenizer, seq_len_start, boundary_token, val_fraction
+    )
+
+    # Pre-collate held-out batches once — fixed at seq_len_end so val
+    # metrics are comparable across epochs regardless of the seq_len ramp
+    val_batches: List[Dict[str, torch.Tensor]] = []
+    if val_fraction > 0.0:
+        windows = dataset.val_windows(seq_len_end)
+        val_batches = [
+            _collate_fn(windows[i : i + batch_size])
+            for i in range(0, len(windows), batch_size)
+        ]
+        print(f"Validation: {len(windows)} windows in {len(val_batches)} batches")
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     if objective == "infonce":
         loss_fn: PairwiseCosineLoss = InfoNCELoss(
             geometric_ratio, sigmoid_scale_start, nce_temperature
         )
+    elif objective == "ce":
+        loss_fn = CrossEntropyLoss()
     elif objective == "pairwise":
         loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
     else:
-        raise ValueError(f"Unknown objective: {objective!r} (pairwise | infonce)")
+        raise ValueError(f"Unknown objective: {objective!r} (pairwise | infonce | ce)")
     scaler = torch.cuda.amp.GradScaler() if use_amp and is_cuda else None
 
     history: Dict[str, Any] = {
@@ -384,6 +436,8 @@ def train_model(
             f"Objective: infonce (temp {nce_temperature}), "
             f"geometric auxiliary ratio {geometric_ratio}"
         )
+    elif objective == "ce":
+        print("Objective: ce (plain cross-entropy over tied-projection logits)")
     else:
         print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
     ramp_desc = (
@@ -448,12 +502,20 @@ def train_model(
             dense_targets,
         )
 
+        if val_batches:
+            epoch_metrics.update(
+                _evaluate(model, val_batches, loss_fn, device_obj, dense_targets)
+            )
+
         epoch_time = time.time() - start_time
         avg_loss = epoch_metrics["avg_loss"]
 
         history["train_loss"].append(avg_loss)
         history["epoch_times"].append(epoch_time)
         history["metrics"].append(epoch_metrics)
+
+        if save_path:
+            _save_history(history, save_path)
 
         print(f"Epoch {epoch + 1} completed in {epoch_time:.2f}s")
         print(f"Average loss: {avg_loss:.4f}")
@@ -512,6 +574,20 @@ def train_model(
     return history
 
 
+def _model_name(save_path: str) -> str:
+    """Model name from a save path ('trained/foo' and 'foo' both -> 'foo')."""
+    if "/" in str(save_path) or "\\" in str(save_path):
+        return Path(save_path).stem
+    return str(save_path)
+
+
+def _save_history(history: Dict[str, Any], save_path: str) -> None:
+    """Persist the training history dict as JSON alongside the checkpoint."""
+    path = f"trained/{_model_name(save_path)}_history.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f)
+
+
 def _save_checkpoint(
     model: nn.Module,
     optimizer: optim.Optimizer,
@@ -522,11 +598,7 @@ def _save_checkpoint(
     is_final: bool,
 ) -> None:
     """Save a training checkpoint."""
-    model_name = (
-        Path(save_path).stem
-        if "/" in str(save_path) or "\\" in str(save_path)
-        else save_path
-    )
+    model_name = _model_name(save_path)
     if is_final:
         path = f"trained/{model_name}.pt"
     else:

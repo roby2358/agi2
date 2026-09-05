@@ -30,6 +30,9 @@ class TextDataset(Dataset):
             Windows may still cross boundaries (dialogue context spans
             utterances), and stretches without any boundary fall back to
             stride starts so marker-less corpora keep full coverage.
+        val_fraction: Fraction of the corpus tail (boundary-aligned when
+            possible) held out of training entirely. Training windows never
+            touch it; val_windows() serves it for held-out evaluation.
     """
 
     def __init__(
@@ -38,6 +41,7 @@ class TextDataset(Dataset):
         tokenizer: object,
         seq_len: int,
         boundary_token: int | None = None,
+        val_fraction: float = 0.0,
     ):
         if isinstance(sources, str):
             self.sources = [sources]
@@ -49,13 +53,35 @@ class TextDataset(Dataset):
         self.boundary_token = boundary_token
 
         self.tokens = self._load_corpus()
-        self._utterance_starts = self._find_utterance_starts()
+        all_starts = self._find_utterance_starts()
+        self._train_end = self._compute_val_cut(all_starts, val_fraction)
+        self._utterance_starts = [s for s in all_starts if s < self._train_end]
         if boundary_token is not None:
             print(
                 f"Sequence starts aligned to {len(self._utterance_starts)} "
                 f"utterance boundaries (token id {boundary_token})"
             )
+        if self._train_end < len(self.tokens):
+            print(
+                f"Validation holdout: {len(self.tokens) - self._train_end} tokens "
+                f"({val_fraction:.1%} of corpus, from position {self._train_end})"
+            )
         self.sequences = self._create_sequences()
+
+    def _compute_val_cut(self, utterance_starts: List[int], val_fraction: float) -> int:
+        """Index where the held-out tail begins (len(tokens) = no holdout).
+
+        Snaps forward to the next utterance boundary past the target split
+        so no utterance straddles the train/val line; marker-less corpora
+        cut at the raw position.
+        """
+        n = len(self.tokens)
+        if val_fraction <= 0.0 or n < 4:
+            return n
+        target = int(n * (1.0 - val_fraction))
+        candidates = [s for s in utterance_starts if s >= target]
+        cut = candidates[0] if candidates else target
+        return max(2, min(cut, n))
 
     def _load_corpus(self) -> List[int]:
         """Load and tokenize text from multiple sources."""
@@ -102,7 +128,7 @@ class TextDataset(Dataset):
         a marker-less source) fall back to stride fill so all text keeps
         contributing windows.
         """
-        last = len(self.tokens) - 1
+        last = self._train_end - 1
         if not self._utterance_starts:
             return list(range(0, last, step))
 
@@ -124,13 +150,13 @@ class TextDataset(Dataset):
     def _create_sequences(self) -> List[Dict[str, List[int]]]:
         """Create (prompt, single next token) pairs."""
         sequences: List[Dict[str, List[int]]] = []
-        max_prompt = min(self.seq_len - 1, len(self.tokens) - 1)
+        max_prompt = min(self.seq_len - 1, self._train_end - 1)
         if max_prompt < 1:
             return sequences
 
         step = max(1, max_prompt // 2)
         for i in self._window_starts(step):
-            end = min(i + max_prompt, len(self.tokens) - 1)
+            end = min(i + max_prompt, self._train_end - 1)
             prompt_len = end - i
             if prompt_len < 1:
                 continue
@@ -139,6 +165,30 @@ class TextDataset(Dataset):
             sequences.append({"prompt_ids": prompt, "target_ids": target})
 
         return sequences
+
+    def val_windows(self, seq_len: int) -> List[Dict[str, torch.Tensor]]:
+        """Non-overlapping windows over the held-out tail, ready to collate.
+
+        Empty when the dataset was built without a val_fraction. Uses a
+        fixed seq_len (callers pass seq_len_end) so validation metrics are
+        comparable across epochs regardless of any training-length ramp.
+        """
+        windows: List[Dict[str, torch.Tensor]] = []
+        max_prompt = max(1, seq_len - 1)
+        last = len(self.tokens) - 1
+        i = self._train_end
+        while i < last:
+            end = min(i + max_prompt, last)
+            windows.append(
+                {
+                    "prompt_ids": torch.tensor(self.tokens[i:end], dtype=torch.long),
+                    "target_ids": torch.tensor(
+                        self.tokens[end : end + 1], dtype=torch.long
+                    ),
+                }
+            )
+            i = end
+        return windows
 
     def set_seq_len(self, seq_len: int) -> None:
         """Update the sequence length and regenerate sequences."""
@@ -175,6 +225,8 @@ class TextDataset(Dataset):
         """Get statistics about the corpus."""
         return {
             "total_tokens": len(self.tokens),
+            "train_tokens": self._train_end,
+            "val_tokens": len(self.tokens) - self._train_end,
             "total_sequences": len(self.sequences),
             "sequence_length": self.seq_len,
             "vocab_size": self.get_vocab_size(),

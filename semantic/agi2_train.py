@@ -10,7 +10,9 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
+from typing import IO, TextIO
 
 import torch
 from src.basic_tokenizer import BasicTokenizer
@@ -21,6 +23,33 @@ from src.cuda_utils import check_cuda_availability, get_optimal_device
 from src.model import AGI2Model
 from src.tiktoken_tokenizer import TiktokenTokenizer
 from src.training import train_model
+
+
+class _Tee:
+    """Duplicate a stream into a log file so runs are reviewable afterwards."""
+
+    def __init__(self, stream: TextIO, log_file: IO[str]) -> None:
+        self._stream = stream
+        self._log = log_file
+
+    def write(self, data: str) -> int:
+        self._log.write(data)
+        self._log.flush()
+        return self._stream.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+        self._log.flush()
+
+
+def _start_run_log(model_name: str) -> str:
+    """Tee stdout+stderr to logs/train-<model>-<timestamp>.log."""
+    os.makedirs("logs", exist_ok=True)
+    log_path = f"logs/train-{model_name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    log_file = open(log_path, "a", encoding="utf-8")
+    sys.stdout = _Tee(sys.stdout, log_file)  # type: ignore[assignment]
+    sys.stderr = _Tee(sys.stderr, log_file)  # type: ignore[assignment]
+    return log_path
 
 
 def main(model_cls=AGI2Model):
@@ -35,11 +64,14 @@ def main(model_cls=AGI2Model):
     try:
         # Load configuration from TOML file
         config = get_training_config(config_path)
-        print(f"Loaded configuration from: {config_path}")
 
     except Exception as e:
         print(f"Error loading configuration: {e}")
         sys.exit(1)
+
+    log_path = _start_run_log(get_config_value(config, "model_name"))
+    print(f"Loaded configuration from: {config_path}")
+    print(f"Logging to: {log_path}")
 
     # Check CUDA availability
     print("Checking CUDA availability for training...")
@@ -188,6 +220,7 @@ def main(model_cls=AGI2Model):
             objective=get_config_value(config, "objective", "pairwise"),
             nce_temperature=get_config_value(config, "nce_temperature", 0.07),
             seq_len_ramp_epochs=get_config_value(config, "seq_len_ramp_epochs", 0),
+            val_fraction=get_config_value(config, "val_fraction", 0.0),
         )
 
         print(f"Training completed successfully!")

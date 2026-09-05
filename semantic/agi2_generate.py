@@ -39,6 +39,7 @@ def main(model_cls=AGI2Model):
     model_seed = get_config_value(config, "model_seed", "")
     repetition_penalty = get_config_value(config, "repetition_penalty", 0.0)
     no_repeat_ngram_size = get_config_value(config, "no_repeat_ngram_size", 0)
+    scoring = get_config_value(config, "scoring", "cosine")
 
     if not model_path.exists():
         print(f"Error: Model file not found: {model_path}")
@@ -65,7 +66,7 @@ def main(model_cls=AGI2Model):
     print(
         f"Max length: {max_length}, Temperature: {temperature}, "
         f"Repetition penalty: {repetition_penalty}, "
-        f"No-repeat ngram: {no_repeat_ngram_size}"
+        f"No-repeat ngram: {no_repeat_ngram_size}, Scoring: {scoring}"
     )
     print("-" * 50)
 
@@ -81,6 +82,7 @@ def main(model_cls=AGI2Model):
         allowed_mask,
         repetition_penalty=repetition_penalty,
         no_repeat_ngram_size=no_repeat_ngram_size,
+        scoring=scoring,
     )
 
     print("Generated text:")

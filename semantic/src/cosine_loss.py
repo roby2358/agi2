@@ -163,6 +163,68 @@ class PairwiseCosineLoss(nn.Module):
         return total, metrics
 
 
+class CrossEntropyLoss(PairwiseCosineLoss):
+    """
+    Plain cross-entropy over tied-projection logits — the standard-LM
+    control for the cosine-training experiment (ce-control-p8vn).
+
+    Logits are the unnormalized dot products between hidden states and the
+    embedding matrix — exactly what model.forward computes for a
+    tie_word_embeddings model — with no temperature and no auxiliary
+    terms. Everything else (dense targets, data, curriculum) is shared
+    with the cosine objectives, so any quality gap measures the objective
+    alone.
+
+    Metrics mirror InfoNCELoss (ce_loss, perplexity, top1_acc) with
+    raw_gap aliased to ce_loss for the early-stop machinery.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(0.0, 0.0, 1.0)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        target_ids: torch.Tensor,
+        embedding_weight: torch.Tensor,
+    ) -> Tuple[torch.Tensor, dict[str, float]]:
+        """
+        Compute cross-entropy over dot-product logits.
+
+        Args:
+            hidden_states: Hidden vectors to train (num_observations, n_embd)
+            target_ids: True next-token ids (num_observations,)
+            embedding_weight: Vocab embedding matrix (vocab_size, n_embd)
+        """
+        device = hidden_states.device
+        if hidden_states.size(0) < 1:
+            zero = torch.tensor(0.0, device=device, requires_grad=True)
+            return zero, {
+                "ce_loss": 0.0,
+                "total_loss": 0.0,
+                "perplexity": 0.0,
+                "top1_acc": 0.0,
+                "raw_gap": 0.0,
+                "valid_observations": 0,
+            }
+
+        logits = hidden_states @ embedding_weight.t()
+        ce = F.cross_entropy(logits, target_ids)
+
+        with torch.no_grad():
+            top1 = (logits.argmax(dim=-1) == target_ids).float().mean().item()
+
+        metrics = {
+            "ce_loss": ce.item(),
+            "total_loss": ce.item(),
+            "perplexity": float(torch.exp(ce.detach()).item()),
+            "top1_acc": top1,
+            "raw_gap": ce.item(),
+            "valid_observations": hidden_states.size(0),
+        }
+        return ce, metrics
+
+
 class InfoNCELoss(PairwiseCosineLoss):
     """
     Cross-entropy over cosine logits (InfoNCE) with an optional geometric
