@@ -48,10 +48,11 @@ resume = ""
 
 # Generation
 max_length = 300
-temperature = 0.3  # for a model TRAINED with infonce, drop this toward nce_temperature (~0.07-0.1)
+temperature = 0.07  # matches nce_temperature — the scale the infonce model was trained at
 beam_size = 3
-repetition_penalty = 0.4  # cosine-score units per prior occurrence (see default.toml)
-no_repeat_ngram_size = 3  # never complete a trigram twice
+repetition_penalty = 0.0  # off — the infonce model doesn't stutter (0.4 was the
+                          # pairwise-era crutch; at temp 0.07 it would also be ~6x stronger)
+no_repeat_ngram_size = 3  # kept as cheap insurance against loops
 model_seed = """
 Give ear to him whose words our speech did frame, In joy and grief alike, we speak his name.
 """
