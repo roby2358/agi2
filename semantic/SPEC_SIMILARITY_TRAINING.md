@@ -106,6 +106,18 @@ Pairwise similarity discards absolute confidence. Cross-entropy produces calibra
 
 - The system MAY apply post-hoc calibration to map embedding distances to calibrated confidence scores
 
+### InfoNCE Objective (2026-09-04)
+
+The concern above was observed in practice: the lilwill_rwkv runs produced representations that ranked correct tokens highly (e.g. `<|endoftext|>` in the top 3 at true utterance ends) while the cosine-softmax assigned them ~2% probability — the sigmoid-gap loss pulls hidden states toward targets but exerts almost no downward pressure on the other vocab entries, so scores stay packed and sampling looks near-random.
+
+The `objective = "infonce"` training mode addresses this within the cosine framework rather than abandoning it:
+
+- Logits are the cosine similarities between the hidden state and EVERY vocab embedding, divided by `nce_temperature` (default 0.07; cosine spans [-1, 1], giving logits in roughly [-14, 14])
+- The loss is standard cross-entropy (NLL of the true next token) over those logits — InfoNCE. Raising the target's probability necessarily pushes all wrong tokens down through the softmax normalization
+- The geometric pair term is retained as an auxiliary weighted by `geometric_ratio`; the anchor term is subsumed (InfoNCE anchors against the entire codebook every step)
+- Training then optimizes exactly the distribution generation samples from (generation already scores by cosine-softmax); after InfoNCE training, a generation temperature near `nce_temperature` reproduces the trained distribution
+- `objective = "pairwise"` remains the default and the research control; metrics for InfoNCE report `nce_loss`, `perplexity`, and `top1_acc`, with `raw_gap` aliased to `nce_loss` for the existing early-stop machinery
+
 ## Validation Plan: GPT-2 on Shakespeare
 
 ### Rationale

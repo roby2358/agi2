@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from .cosine_loss import PairwiseCosineLoss
+from .cosine_loss import InfoNCELoss, PairwiseCosineLoss
 from .dataset import TextDataset
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,9 @@ def _compute_batch_loss(
     vector at each sample's last real prompt position trains against the
     held-out target token. Both formulations match generation, which scores
     the next token from the hidden state at the end of the sequence so far.
+
+    An InfoNCELoss receives the target token IDS (its cross-entropy needs
+    the class index); PairwiseCosineLoss receives the target embeddings.
     """
     _, hidden_states = model.forward_hidden(prompt_ids)
     embedding_weight = model.token_embeddings.embedding.weight
@@ -99,15 +102,16 @@ def _compute_batch_loss(
     if dense_targets:
         next_ids = _next_token_ids(prompt_ids, prompt_mask, target_ids)
         h = hidden_states[prompt_mask]  # (N, n_embd) — real positions only
-        e = embedding_weight[next_ids[prompt_mask]]
+        ids = next_ids[prompt_mask]
     else:
         # Hidden vector at the last unpadded prompt position, per sample
         last_prompt_pos = prompt_mask.sum(dim=1) - 1
         batch_index = torch.arange(prompt_ids.size(0), device=prompt_ids.device)
         h = hidden_states[batch_index, last_prompt_pos, :]
-        e = embedding_weight[target_ids[:, 0]]
+        ids = target_ids[:, 0]
 
-    return loss_fn(h, e, embedding_weight)
+    target = ids if isinstance(loss_fn, InfoNCELoss) else embedding_weight[ids]
+    return loss_fn(h, target, embedding_weight)
 
 
 def _step_with_amp(
@@ -282,6 +286,8 @@ def train_model(
     early_stop_patience: int,
     align_sequences: bool = True,
     dense_targets: bool = True,
+    objective: str = "pairwise",
+    nce_temperature: float = 0.07,
 ) -> Dict[str, Any]:
     """
     Train the AGI2 model using pairwise cosine similarity loss.
@@ -289,6 +295,10 @@ def train_model(
     With dense_targets (default), every real position trains against its
     next token — see _compute_batch_loss; dense_targets=False restores the
     original one-signal-per-window formulation as a control.
+
+    objective selects the loss: "pairwise" (the sigmoid-gap formulation) or
+    "infonce" (cross-entropy over cosine logits at nce_temperature, with
+    the geometric term as a weighted auxiliary — anchor_ratio is unused).
 
     Sigmoid scale ramps linearly from sigmoid_scale_start to sigmoid_scale_end
     over the training run, gradually tightening tolerances as the model improves.
@@ -313,7 +323,14 @@ def train_model(
     dataset = TextDataset(sources, tokenizer, seq_len_start, boundary_token)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
+    if objective == "infonce":
+        loss_fn: PairwiseCosineLoss = InfoNCELoss(
+            geometric_ratio, sigmoid_scale_start, nce_temperature
+        )
+    elif objective == "pairwise":
+        loss_fn = PairwiseCosineLoss(geometric_ratio, anchor_ratio, sigmoid_scale_start)
+    else:
+        raise ValueError(f"Unknown objective: {objective!r} (pairwise | infonce)")
     scaler = torch.cuda.amp.GradScaler() if use_amp and is_cuda else None
 
     history: Dict[str, Any] = {
@@ -334,7 +351,13 @@ def train_model(
     print(f"Starting training for {epochs} epochs...")
     print(f"Model parameters: {model.get_num_params():,}")
     print(f"Batch size: {batch_size}, LR: {learning_rate}")
-    print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
+    if objective == "infonce":
+        print(
+            f"Objective: infonce (temp {nce_temperature}), "
+            f"geometric auxiliary ratio {geometric_ratio}"
+        )
+    else:
+        print(f"Loss ratios: geometric={geometric_ratio}, anchor={anchor_ratio}")
     print(f"Seq len: {seq_len_start} -> {seq_len_end} over {epochs} epochs")
     print(
         f"Sigmoid scale: {sigmoid_scale_start} -> {sigmoid_scale_end} over {epochs} epochs"

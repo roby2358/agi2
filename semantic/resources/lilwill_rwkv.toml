@@ -35,6 +35,8 @@ sigmoid_scale_end = 10.0
 early_stop_patience = 100
 align_sequences = true  # windows start at <|endoftext|> utterance boundaries
 dense_targets = true    # every position trains against its next token
+objective = "infonce"   # CE over cosine logits (see default.toml); "pairwise" = the control
+nce_temperature = 0.07
 
 # Performance
 use_compile = false
@@ -46,7 +48,7 @@ resume = ""
 
 # Generation
 max_length = 300
-temperature = 0.3
+temperature = 0.3  # for a model TRAINED with infonce, drop this toward nce_temperature (~0.07-0.1)
 beam_size = 3
 repetition_penalty = 0.4  # cosine-score units per prior occurrence (see default.toml)
 no_repeat_ngram_size = 3  # never complete a trigram twice

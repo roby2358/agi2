@@ -187,6 +187,42 @@ class TestTraining:
         assert dense_metrics["valid_observations"] == 6  # 4 + 2 real positions
         assert sparse_metrics["valid_observations"] == 2  # one per sample
 
+    def test_infonce_objective_through_batch_loss(self) -> None:
+        """_compute_batch_loss routes target IDS to an InfoNCELoss and the
+        dense path trains one observation per real token."""
+        from src.cosine_loss import InfoNCELoss
+
+        config = AGI2Config(
+            vocab_size=50, n_positions=8, n_ctx=8, n_embd=16, n_layer=1, n_head=2
+        )
+        model = AGI2Model(config)
+        loss_fn = InfoNCELoss(0.7, 3.0, nce_temperature=0.07)
+        batch = _collate_fn(
+            [
+                {
+                    "prompt_ids": torch.tensor([1, 2, 3, 4]),
+                    "target_ids": torch.tensor([5]),
+                },
+                {
+                    "prompt_ids": torch.tensor([6, 7]),
+                    "target_ids": torch.tensor([8]),
+                },
+            ]
+        )
+        loss, metrics = _compute_batch_loss(
+            model,
+            batch["prompt_ids"],
+            batch["prompt_mask"],
+            batch["target_ids"],
+            loss_fn,
+            dense_targets=True,
+        )
+        assert metrics["valid_observations"] == 6
+        assert "perplexity" in metrics
+        loss.backward()
+        grads = [p.grad for p in model.parameters() if p.grad is not None]
+        assert all(torch.isfinite(g).all() for g in grads)
+
     def test_dense_loss_backward(self) -> None:
         """The dense path must produce finite gradients end to end."""
         config = AGI2Config(

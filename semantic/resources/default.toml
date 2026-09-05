@@ -43,6 +43,16 @@ align_sequences = true
 # original one-signal-per-window last-position formulation as a control.
 dense_targets = true
 
+# Training objective: "pairwise" (sigmoid-gap geometric+anchor loss) or
+# "infonce" (cross-entropy over cosine logits — cosine training with
+# contrastive normalization; the geometric term stays as an auxiliary
+# weighted by geometric_ratio, anchor_ratio is unused). nce_temperature
+# divides the cosine logits: cosine spans [-1, 1], so 0.07 gives logits
+# in roughly [-14, 14]. After infonce training, generation temperature
+# near nce_temperature reproduces the trained distribution.
+objective = "pairwise"
+nce_temperature = 0.07
+
 # Generation anti-repetition. repetition_penalty is subtracted from a
 # token's cosine-similarity score once per prior occurrence in the
 # generated output (cosine scores span [-1, 1]; suggested 0.3-0.5 at

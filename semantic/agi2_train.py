@@ -185,6 +185,8 @@ def main(model_cls=AGI2Model):
             early_stop_patience=early_stop_patience,
             align_sequences=get_config_value(config, "align_sequences", True),
             dense_targets=get_config_value(config, "dense_targets", True),
+            objective=get_config_value(config, "objective", "pairwise"),
+            nce_temperature=get_config_value(config, "nce_temperature", 0.07),
         )
 
         print(f"Training completed successfully!")

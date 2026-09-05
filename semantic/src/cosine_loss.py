@@ -14,7 +14,7 @@ The sigmoid amplifies the gradient signal in the practical range (gaps of
 Scale ramps linearly over training to tighten tolerances as the model improves.
 """
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -158,6 +158,111 @@ class PairwiseCosineLoss(nn.Module):
             "anchor_loss": anc_loss.item(),
             "total_loss": total.item(),
             "raw_gap": raw_gap,
+            "valid_observations": valid_batch,
+        }
+        return total, metrics
+
+
+class InfoNCELoss(PairwiseCosineLoss):
+    """
+    Cross-entropy over cosine logits (InfoNCE) with an optional geometric
+    auxiliary term.
+
+    This is cosine-similarity training with proper contrastive
+    normalization: every vocab embedding is scored by cosine against the
+    hidden state, scaled by a temperature, and the true next token's
+    softmax probability is maximized. Unlike the pairwise sigmoid-gap loss,
+    raising the target necessarily pushes ALL wrong tokens down — the
+    normalization the spec's "Loss of Calibrated Confidence" section
+    anticipated losing. It also optimizes exactly the distribution
+    generation samples from (generation scores by cosine-softmax already).
+
+    The geometric term (structure preservation between hidden states and
+    embedding space) is retained as a weighted auxiliary; the anchor term
+    is subsumed — InfoNCE anchors against the whole codebook every step.
+
+    Args:
+        geometric_ratio: Weight of the auxiliary geometric pair loss
+            (0.0 disables it)
+        sigmoid_scale: Sigmoid amplification for the geometric term (ramped
+            by the training loop exactly as for PairwiseCosineLoss)
+        nce_temperature: Divisor for cosine logits. Cosine spans [-1, 1],
+            so ~0.07 gives logits in roughly [-14, 14] over the vocab.
+    """
+
+    def __init__(
+        self,
+        geometric_ratio: float,
+        sigmoid_scale: float,
+        nce_temperature: float = 0.07,
+    ):
+        super().__init__(geometric_ratio, 0.0, sigmoid_scale)
+        self.nce_temperature = nce_temperature
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        target_ids: torch.Tensor,
+        embedding_weight: torch.Tensor,
+    ) -> Tuple[torch.Tensor, dict[str, float]]:
+        """
+        Compute InfoNCE loss over the full vocabulary.
+
+        Args:
+            hidden_states: Hidden vectors to train (num_observations, n_embd)
+            target_ids: True next-token ids (num_observations,)
+            embedding_weight: Vocab embedding matrix (vocab_size, n_embd)
+
+        Returns:
+            Tuple of (total_loss, metrics_dict). raw_gap in the metrics is
+            the NCE component — temperature is fixed, so it is the
+            scale-independent progress measure the early stop reads.
+        """
+        device = hidden_states.device
+
+        h_norms = hidden_states.norm(dim=-1)
+        valid_mask = h_norms > 1e-8
+        valid_indices = valid_mask.nonzero(as_tuple=True)[0]
+        if len(valid_indices) < 2:
+            zero = torch.tensor(0.0, device=device, requires_grad=True)
+            return zero, {
+                "nce_loss": 0.0,
+                "geometric_loss": 0.0,
+                "total_loss": 0.0,
+                "perplexity": 0.0,
+                "top1_acc": 0.0,
+                "raw_gap": 0.0,
+                "valid_observations": len(valid_indices),
+            }
+
+        h = hidden_states[valid_indices]
+        targets = target_ids[valid_indices]
+        valid_batch = h.size(0)
+
+        logits = (
+            F.normalize(h, dim=-1) @ F.normalize(embedding_weight, dim=-1).t()
+        ) / self.nce_temperature
+        nce = F.cross_entropy(logits, targets)
+
+        geo_loss: Optional[torch.Tensor] = None
+        if self.geometric_ratio > 0.0:
+            e = embedding_weight[targets]
+            num_pairs = max(1, valid_batch // 2)
+            geo_loss, _ = self._geometric_loss(h, e, num_pairs, device)
+            total = nce + self.geometric_ratio * geo_loss
+        else:
+            total = nce
+
+        with torch.no_grad():
+            top1 = (logits.argmax(dim=-1) == targets).float().mean().item()
+
+        metrics = {
+            "nce_loss": nce.item(),
+            "geometric_loss": geo_loss.item() if geo_loss is not None else 0.0,
+            "total_loss": total.item(),
+            "perplexity": float(torch.exp(nce.detach()).item()),
+            "top1_acc": top1,
+            "raw_gap": nce.item(),
             "valid_observations": valid_batch,
         }
         return total, metrics
