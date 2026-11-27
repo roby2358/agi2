@@ -17,6 +17,11 @@ class HegelConfig:
         max_context: Longest context in tokens, counting the current token.
         floor: Probability mass each context spreads uniformly over the
             vocabulary, so unseen next tokens stay finite in log space.
+        holdout_fraction: Share of the text, as randomly chosen blocks, that
+            is kept away from the tokenizer and the chain and only used for
+            scoring. 0 uses the whole corpus.
+        holdout_block: Approximate block size in characters for the split.
+        holdout_seed: Seed choosing which blocks are held out.
         prune_threshold: Minimum gain in nats (occurrences times KL from the
             backoff parent) for a context to be kept. 0 keeps every context.
         slot_dim: Width of each token vector in the residual stream; 0 means
@@ -40,6 +45,9 @@ class HegelConfig:
     vocab_size: int = 512
     max_context: int = 3
     floor: float = 1e-4
+    holdout_fraction: float = 0.0
+    holdout_block: int = 1000
+    holdout_seed: int = 0
     prune_threshold: float = 0.0
     slot_dim: int = 0
     logit_dim: int = 0
@@ -59,6 +67,10 @@ class HegelConfig:
             raise ValueError("max_context must be at least 1")
         if not 0.0 < self.floor < 1.0:
             raise ValueError("floor must be strictly between 0 and 1")
+        if not 0.0 <= self.holdout_fraction < 1.0:
+            raise ValueError("holdout_fraction must be in [0, 1)")
+        if self.holdout_block < 1:
+            raise ValueError("holdout_block must be at least 1")
         if self.prune_threshold < 0.0:
             raise ValueError("prune_threshold must not be negative")
         if self.slot_dim < 0 or self.logit_dim < 0:

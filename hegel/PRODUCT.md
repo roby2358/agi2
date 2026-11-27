@@ -73,6 +73,9 @@ of the first run.
   time, so it is dropped and pruning has its own rule (below).
 - **Floor for unseen tokens.** Every context's distribution is mixed with a
   uniform one at weight 1e-4, so every log-probability is finite.
+- **Held-out split.** A random 10% of the text, sampled as blocks of about
+  1000 characters, is kept from the tokenizer and the chain and used only for
+  scoring.
 - **The pruned chain is the reference.** The transformer is compared with the
   chain it was compiled from. What pruning cost is reported separately,
   against the unpruned chain.
@@ -177,6 +180,38 @@ continuations.
 from a config and continues a source string; with no string it prompts
 interactively.
 
+## Held-out evaluation
+
+A random 10% of the corpus, sampled as blocks of about 1000 characters, is
+kept away from the tokenizer and the chain and used only for scoring. Two
+findings.
+
+**The compile holds up on unseen text.** The wide build still matches its
+chain exactly. The squeezed build stays close: mean KL 0.016 nats and 97.9%
+top-1 agreement, against 0.002 and 99.8% on the training text.
+
+**The chain does not.** It scores 0.51 nats per token on its training text
+and 5.88 on held-out text. That is worse than unigram frequencies (5.32) and
+far worse than a chain with a single token of context (3.99); uniform
+guessing is 6.24. The cause is hard backoff with no hedging: a context seen
+once predicts its one continuation with near certainty, and about a third of
+held-out tokens land on the floor. Longer contexts make this worse, the
+reverse of what they do in-sample.
+
+Within the current design a much larger floor (0.1) and much harder pruning
+bring it to about 3.17. Mixing each context's distribution with the shorter
+context it backs off to (standard interpolated smoothing) reaches 2.66 in a
+scratch test, and makes longer contexts useful again.
+
+A curiosity: the squeezed transformer scores slightly better than its own
+chain on held-out text, 5.57 against 5.88. Its approximation error leaks a
+little probability onto tokens the chain forbids, which acts as a softer
+floor. It is an accident, not generalisation.
+
+A caution: on a corpus this small one split is a noisy measure. Six random
+splits put the chain between 4.65 and 5.88, and the shipped seed is the
+hardest of them. The ordering of methods is the same in every split.
+
 ## Doors to look behind (question 2)
 
 These are hypotheses to test once question 1 is answered, not claims.
@@ -197,10 +232,11 @@ These are hypotheses to test once question 1 is answered, not claims.
 
 ## Open questions
 
-- **Held-out text.** All numbers so far are on the corpus the chain was
-  built from, where it mostly recalls (0.53 nats per token). Nothing yet says
-  how chain or transformer behave on text they have not seen, which is also
-  the only place generalisation could show.
+- **Smoothing the chain.** Held-out evaluation shows the chain, not the
+  compile, is the weak link. Interpolating each context with its parent is
+  a change to the chain alone and the compiler does not care how a row was
+  made. But smoothed rows are dense, and the output factoring currently
+  relies on rows having few seen tokens. Does the squeeze survive it?
 - **Shrinking `d_ff`.** After the squeeze, the feed-forward layer (one neuron
   per kept context, 24,419 of them) is nearly all of the model. Pruning is
   the only lever on it so far, and it costs fidelity steadily.

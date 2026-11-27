@@ -161,6 +161,14 @@ def compare_chains(
     return meter.result()
 
 
+def unigram_nll(chain: Chain, tokens: Sequence[int]) -> float:
+    """Mean NLL in nats of each next token under the chain's unigram row."""
+    if len(tokens) < 2:
+        return 0.0
+    nexts = np.asarray(tokens[1:], dtype=np.int64)
+    return float(-chain.log_probs[0][nexts].mean())
+
+
 def model_predictor(model: HegelModel) -> Callable[[Sequence[int]], LogProbs]:
     """Wrap the model as history -> next-token log-probabilities."""
 

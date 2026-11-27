@@ -24,30 +24,34 @@ closely like the chain, not whether it beats a trained model.
 
 ## Status
 
-Two builds run end to end on `../samples/corpus20.txt` (54,944 tokens,
-V = 512, context 3, prune threshold 0.5, 24,419 contexts kept of 34,075).
-Fidelity is the transformer against the chain it was compiled from, over all
-corpus positions.
+Two builds run end to end on `../samples/corpus20.txt`. A random 10% of the
+text is held out: 49,416 training tokens, 5,540 held-out tokens, V = 512,
+context 3, prune threshold 0.5, 22,611 contexts kept of 31,873. Fidelity is
+the transformer against the chain it was compiled from.
 
 | | wide (`corpus20`) | squeezed (`corpus20_squeezed`) |
 |---|---|---|
 | slots / logit region | one-hot 512 / exact 512 | random 32-dim / 128-dim code |
-| `d_model`, `d_ff` | 2048, 24,419 | 224, 24,419 |
-| weights | 106 M (668 K nonzero) | 11.2 M (5.2 M nonzero) |
-| mean KL (nats) | 3.0e-7 | 0.0022 |
-| top-1 agreement | 100% | 99.83% |
-| NLL on the corpus (chain: 0.5364) | 0.5364 | 0.5389 |
+| `d_model`, `d_ff` | 2048, 22,611 | 224, 22,611 |
+| weights | 99 M (626 K nonzero) | 10.4 M (4.9 M nonzero) |
+| training text: mean KL (nats) | 3.1e-7 | 0.0022 |
+| training text: top-1 agreement | 100% | 99.78% |
+| training text: NLL (chain 0.5112) | 0.5112 | 0.5137 |
+| held-out: mean KL (nats) | 2.1e-7 | 0.016 |
+| held-out: top-1 agreement | 100% | 97.9% |
+| held-out: NLL (chain 5.883) | 5.883 | 5.570 |
 
-The wide build is exact to float32 rounding and its samples match the chain
-token for token. The squeezed build's samples read like the chain's and
-follow them for a while, then part ways at the first token where the two
-distributions differ enough to flip a draw.
+The compile works: both builds follow their chain on text the chain never
+saw, not only on the training text. **The chain itself is now the weak
+link.** On held-out text it scores 5.88 nats per token, worse than unigram
+frequencies (5.32) and far worse than a chain with one token of context
+(3.99). See "Held-out behaviour" below.
 
 `hegel_generate.py` continues a source string with either build.
 
-Next step: nothing is measured on held-out text yet, and `d_ff` (one neuron
-per context) is now by far the largest part of the model. See "Open
-questions".
+Next step, proposed and not started: smooth the chain (interpolate each
+context with the one it backs off to). In a scratch test this takes held-out
+NLL from 5.88 to 2.66.
 
 ## Files and commands
 
@@ -77,7 +81,7 @@ just hegel-run                       # interactive; empty line quits
 cd hegel
 uv run python hegel_compile.py resources/corpus20_squeezed.toml
 uv run python hegel_generate.py resources/corpus20.toml "source string"
-uv run pytest tests        # 72 tests, about 15 s
+uv run pytest tests        # 84 tests, about 15 s
 uv run black src tests hegel_compile.py hegel_generate.py
 uv run isort src tests hegel_compile.py hegel_generate.py
 uv run flake8 --max-line-length 88 --extend-ignore E203 src tests *.py
@@ -112,6 +116,14 @@ pays that once.
 - **One stream.** The corpus is one unbroken token stream. `<|endoftext|>`
   markers are removed and every run of whitespace, newlines included, becomes
   one space. No groups, no Start/End markers, no resets.
+- **Held-out split.** The normalized text is cut into blocks of about
+  `holdout_block` (1000) characters at word boundaries, and a random
+  `holdout_fraction` of the blocks (chosen by `holdout_seed`) is held out.
+  Neither the tokenizer nor the chain sees them. Training and held-out text
+  are each their blocks joined in order, so each has a few seams (about 13
+  in the held-out stream) where non-adjacent text meets. Both shipped
+  configs hold out 10%. Single tokens cannot be sampled, since a token is
+  scored from its context.
 - **Longest-match backoff.** The longest kept context that matches predicts;
   shorter ones are fallback, down to the unigram distribution. The original
   chain sums counts across context lengths, which a softmax output cannot
@@ -177,6 +189,10 @@ there is none.
 - Sizes: `d_ff` = kept contexts, heads = n - 1, `d_head` = V.
 
 ### Pruning (measured on corpus20, V = 512, context 3)
+
+The tables in this section and in "Squeezed build" were measured with the
+chain built on the whole corpus, before the held-out split existed. With 10%
+held out the numbers move slightly (see "Status").
 
 Pruned chain against the unpruned chain, over all corpus positions:
 
@@ -264,6 +280,51 @@ where the unigram row is also good.
 Not tried yet: structured (not random) token vectors, which is where
 near-miss firing could become generalisation instead of noise.
 
+### Held-out behaviour (measured; the chain is the problem)
+
+NLL in nats per token on the held-out 10%, `holdout_seed = 0` (uniform is
+6.24, unigram 5.32):
+
+- **The configured chain scores 5.88**, worse than unigram. 34% of held-out
+  tokens land on the floor at 15.4 nats each. A context seen once predicts
+  its one continuation with probability near 1; on new text that is often
+  wrong, and hard backoff has no way to hedge.
+- **Longer contexts make it worse.** Unpruned, floor 1e-4: context 1 scores
+  3.99, context 2 5.35, context 3 5.91, context 4 6.08. In-sample the order
+  is reversed (3.03, 1.17, 0.50, 0.28).
+- **The floor is the biggest lever within the current design.** Context 3,
+  unpruned: floor 1e-4 gives 5.91, 1e-3 5.11, 1e-2 4.32, 3e-2 3.96, 1e-1
+  3.59.
+- **Pruning helps out of sample**, the opposite of in-sample. Context 3,
+  floor 1e-4: threshold 0.5 gives 5.88 (22,611 contexts), 4 gives 5.25
+  (7,456), 16 gives 4.25 (1,946), 32 gives 3.92 (958).
+- **The best this design reaches is about 3.17** (floor 0.1, threshold 16,
+  about 1,700 contexts). A uniform floor is a crude hedge.
+- **Interpolated smoothing reaches 2.66.** Scratch only: each context's
+  distribution is mixed with its parent's, unpruned. Witten-Bell weights
+  (no tunable): context 1 3.51, context 2 2.71, context 3 2.66, context 4
+  2.71. Absolute discounting at 0.75: 3.52, 2.74, 2.65, 2.66. Longer
+  contexts help again, up to 3.
+- **The squeezed transformer beats its own chain on held-out text**, 5.57
+  against 5.88. This is not generalisation. Its approximation error leaks a
+  little probability onto tokens the chain forbids, which softens the floor.
+  It is the same effect as raising the floor, by accident.
+
+**One split of a 127 KB corpus is a noisy measure.** The configured chain's
+held-out NLL by split: random seeds 0 to 5 give 5.88, 5.30, 4.65, 5.31,
+5.33, 5.15; the last 10% gives 4.10, the first 10% 5.84, the middle 10%
+7.10. Seed 0 is the hardest of the six random splits. The ordering of
+methods is the same in every split (the configured chain always loses to
+one token of context), so compare methods on the same seed and do not read
+much into differences of a few tenths.
+
+Smoothing is a change to the chain only. The compiler takes whatever
+distribution each kept context holds, and telescoping does not care how the
+rows were made. Two things would need rework: the pruning gain (smoothed
+rows differ less from their parents, so thresholds shift) and the output
+factoring, which currently leans on each row having few seen tokens.
+Smoothed rows are dense.
+
 ### Verification (implemented)
 
 - `FidelityMeter`: mean and max KL (reference first), top-1 agreement, largest
@@ -274,9 +335,12 @@ near-miss firing could become generalisation instead of noise.
   equals one forward pass (tested).
 - Samples from chain and model use the same uniform draws through the inverse
   CDF, so they stay in step exactly as long as the distributions agree.
+- With a held-out split, `hegel_compile.py` also prints held-out NLL for
+  uniform, unigram, unpruned chain, chain and transformer, and the
+  transformer's fidelity to its chain on the held-out stream.
 
 ## Open questions
 
-Tracked in `PRODUCT.md`: held-out behaviour, shrinking `d_ff`, structured
+Tracked in `PRODUCT.md`: smoothing the chain, shrinking `d_ff`, structured
 token vectors, the closeness threshold, vocabulary size and context length,
 summing versus backoff.

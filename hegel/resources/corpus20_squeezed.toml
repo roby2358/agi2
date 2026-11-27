@@ -7,6 +7,9 @@ corpus = "../samples/corpus20.txt"
 vocab_size = 512
 max_context = 3
 floor = 1e-4
+holdout_fraction = 0.1   # a random 10% of the text is only used for scoring
+holdout_block = 1000     # sampled as blocks of about this many characters
+holdout_seed = 0
 prune_threshold = 0.5
 
 slot_dim = 32            # token vector width; 0 = one-hot

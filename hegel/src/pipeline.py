@@ -7,7 +7,7 @@ from typing import Any, List
 from src.chain import Chain, Counts, build_chain, count_contexts
 from src.compiler import compile_chain
 from src.config import HegelConfig
-from src.corpus import tokenize
+from src.corpus import tokenize_split
 from src.model import HegelModel
 
 
@@ -18,7 +18,9 @@ class Compiled:
 
     Attributes:
         text_length: Characters in the corpus file.
-        tokens: The corpus as one token stream.
+        tokens: The training part of the corpus as one token stream.
+        held_out: The held-out part, never seen by tokenizer or chain; empty
+            when the config holds nothing out.
         tokenizer: The fitted BPE tokenizer (encode / decode / vocab_size).
         counts: Raw next-token counts for every context.
         chain: The pruned backoff chain.
@@ -27,6 +29,7 @@ class Compiled:
 
     text_length: int
     tokens: List[int]
+    held_out: List[int]
     tokenizer: Any
     counts: Counts
     chain: Chain
@@ -36,7 +39,13 @@ class Compiled:
 def compile_from_config(config: HegelConfig) -> Compiled:
     """Run tokenize, chain and compile for a config. No gradient steps."""
     text = Path(config.corpus).read_text(encoding="utf-8")
-    tokens, tokenizer = tokenize(text, config.vocab_size)
+    tokens, held_out, tokenizer = tokenize_split(
+        text,
+        config.vocab_size,
+        config.holdout_fraction,
+        config.holdout_block,
+        config.holdout_seed,
+    )
     counts = count_contexts(tokens, config.max_context)
     chain = build_chain(
         counts,
@@ -48,6 +57,7 @@ def compile_from_config(config: HegelConfig) -> Compiled:
     return Compiled(
         text_length=len(text),
         tokens=tokens,
+        held_out=held_out,
         tokenizer=tokenizer,
         counts=counts,
         chain=chain,

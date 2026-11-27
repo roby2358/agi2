@@ -21,6 +21,7 @@ from src.verify import (
     compare_model_to_chain,
     model_predictor,
     sample,
+    unigram_nll,
 )
 
 
@@ -58,6 +59,9 @@ def main(argv: List[str]) -> int:
         f"  {compiled.text_length} characters, {len(tokens)} tokens, "
         f"vocabulary {vocab}"
     )
+    held_out = compiled.held_out
+    if held_out:
+        print(f"  plus {len(held_out)} held-out tokens the chain never sees")
 
     _describe_chain(chain)
     if config.prune_threshold > 0.0:
@@ -87,6 +91,18 @@ def main(argv: List[str]) -> int:
         "Fidelity: transformer against the chain it was compiled from",
         compare_model_to_chain(model, chain, tokens),
     )
+
+    if len(held_out) > 1:
+        on_chain = compare_model_to_chain(model, chain, held_out)
+        full = build_chain(compiled.counts, vocab, config.max_context, config.floor)
+        unpruned_nll = compare_chains(full, chain, held_out).reference_nll
+        print(f"\nHeld-out text: NLL in nats per token ({len(held_out)} tokens)")
+        print(f"  uniform over the vocabulary   {np.log(vocab):.4f}")
+        print(f"  unigram                       {unigram_nll(chain, held_out):.4f}")
+        print(f"  unpruned chain                {unpruned_nll:.4f}")
+        print(f"  chain                         {on_chain.reference_nll:.4f}")
+        print(f"  transformer                   {on_chain.other_nll:.4f}")
+        _report("Fidelity on held-out text: transformer against its chain", on_chain)
 
     rng = np.random.default_rng(config.seed)
     predict_model = model_predictor(model)

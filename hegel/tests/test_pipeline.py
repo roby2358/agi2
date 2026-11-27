@@ -21,3 +21,16 @@ class TestCompileFromConfig:
         assert compiled.chain.max_context == 2
         assert compiled.model.d_ff == len(compiled.chain.contexts) - 1
         assert compiled.model.n_heads == 1
+        assert compiled.held_out == []
+
+    def test_holdout_is_kept_out_of_the_chain(self, tmp_path: Path) -> None:
+        corpus = tmp_path / "corpus.txt"
+        corpus.write_text(TEXT)
+        whole = compile_from_config(HegelConfig(corpus=str(corpus), vocab_size=280))
+        config = HegelConfig(
+            corpus=str(corpus), vocab_size=280, holdout_fraction=0.2, holdout_block=100
+        )
+        compiled = compile_from_config(config)
+        assert compiled.held_out
+        assert len(compiled.tokens) < len(whole.tokens)
+        assert compiled.chain.occurrences[0] == len(compiled.tokens) - 1

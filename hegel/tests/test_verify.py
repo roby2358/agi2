@@ -14,6 +14,7 @@ from src.verify import (
     model_predictor,
     model_stream_log_probs,
     sample,
+    unigram_nll,
 )
 
 
@@ -81,6 +82,16 @@ class TestComparisons:
         result = compare_chains(full, pruned, tokens)
         assert result.kl_mean > 0.0
         assert result.other_nll > result.reference_nll
+
+
+@pytest.mark.unit
+class TestUnigramNll:
+    def test_matches_the_root_row(self) -> None:
+        tokens = _stream()
+        chain = build_chain(count_contexts(tokens, 2), 5, 2)
+        expected = -np.mean([chain.log_probs[0][t] for t in tokens[1:]])
+        assert unigram_nll(chain, tokens) == pytest.approx(expected)
+        assert unigram_nll(chain, [3]) == 0.0
 
 
 @pytest.mark.unit
