@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AGI2 is a repository of small language-model experiments in PyTorch. Each experiment lives in its own top-level directory:
 
 - `semantic/` — a from-scratch GPT-2 and an RWKV model, trained on text with cosine-similarity objectives (`pairwise`, `infonce`) or plain cross-entropy (`ce`). Full pipeline: tokenization, training, checkpoints, generation (sampling + beam search). Configured by TOML files, not CLI arguments.
-- `hegel/` — a transformer compiled from a Markov chain with zero training. See `hegel/PRODUCT.md`. No code yet.
+- `hegel/` — a transformer compiled from a Markov chain with zero training. See `hegel/PRODUCT.md` and `hegel/CLAUDE.md`.
 
 Shared at the root: `samples/` (corpora), `pyproject.toml` and `uv.lock` (one environment for everything), `justfile`, `pjpd/` (backlog).
 
@@ -39,6 +39,14 @@ uv run python agi2_interactive.py resources/moby_dick.toml
 ```
 
 The `rwkv_*.py` scripts mirror these. `estimate_memory.py` at the root estimates GPU memory for a config.
+
+### Running (hegel)
+
+```bash
+just hegel                          # hegel_compile.py resources/corpus20.toml
+```
+
+Details, tests and lint commands are in `hegel/CLAUDE.md`.
 
 ### Testing
 

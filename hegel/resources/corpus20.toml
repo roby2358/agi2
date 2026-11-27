@@ -1,0 +1,15 @@
+# First milestone: corpus20, small BPE vocabulary, context up to 3 tokens.
+# Usage (from hegel/): uv run python hegel_compile.py resources/corpus20.toml
+
+corpus = "../samples/corpus20.txt"
+
+vocab_size = 512
+max_context = 3          # tokens of context, counting the current one
+floor = 1e-4             # uniform mass mixed into every distribution
+prune_threshold = 0.5    # nats; 0 keeps every context
+
+seed = 0
+sample_count = 4
+sample_tokens = 80
+
+# checkpoint = "compiled/corpus20.pt"

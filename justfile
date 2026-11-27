@@ -25,6 +25,10 @@ help:
 train model:
     cd semantic && uv run python {{ if model =~ "rwkv" { "rwkv_train.py" } else { "agi2_train.py" } }} resources/{{ model }}.toml
 
+# Compile a transformer from a Markov chain (no training): just hegel corpus20
+hegel config="corpus20":
+    cd hegel && uv run python hegel_compile.py resources/{{ config }}.toml
+
 # Generate from a trained model: just run lilwill_rwkv "What ho"
 run model prompt="Once upon a time":
     cd semantic && uv run python {{ if model =~ "rwkv" { "rwkv_generate.py" } else { "agi2_generate.py" } }} resources/{{ model }}.toml "{{ prompt }}"
