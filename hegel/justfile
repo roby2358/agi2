@@ -58,7 +58,7 @@ cc-stats config:
 cc-sweep config setting +values:
     @PYTHONPATH=. uv run python "{{ lab }}/sweep_chain.py" "$@"
 
-# Fidelity for several values of one squeeze setting: just cc-squeeze corpus20_squeezed logit_dim 64 128
+# Fidelity of the compiled transformer for several values of one setting, squeeze or chain: just cc-squeeze corpus20_squeezed logit_dim 64 128
 cc-squeeze config setting +values:
     @PYTHONPATH=. uv run python "{{ lab }}/sweep_squeeze.py" "$@"
 

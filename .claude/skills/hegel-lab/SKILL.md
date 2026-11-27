@@ -25,7 +25,7 @@ the script or the recipe here; do not work around it inline.
 | `just cc-sweep <config> <setting> <values...>` | Held-out NLL and top-1 of the chain for each value, over the config's splits. No model built. |
 | `just cc-context <config> [max]` | Held-out NLL and top-1 of the unpruned chain at context lengths 1 to max, plus distinct contexts per length. Lean on memory, so it works past context 3 on Hegel (26 s for 6). Needs vocabulary 512. |
 | `just cc-smoothing <config> [max]` | The same table under several smoothings: Witten-Bell with a scaled backoff share, absolute discounting, Kneser-Ney. 3 min on Hegel for 6. Edit the `variants` list in `smoothing.py` to change the grid. |
-| `just cc-squeeze <config> <setting> <values...>` | Compiles the transformer for each value on one fixed chain; fidelity on a sample of positions. |
+| `just cc-squeeze <config> <setting> <values...>` | Compiles the transformer for each value; fidelity against its chain on a sample of positions, and contexts by length. A squeeze setting reuses one chain; a chain setting (`max_context`, `prune_threshold`, ...) rebuilds it per value. |
 | `just cc-throughput <config> [tokens]` | Load time and forward-pass time of saved weights. |
 | `just cc-py <script> [args...]` | Runs a scratch script with `src.*` and `lab` importable. |
 | `just cc-commit <message-file>` | Stages everything in the repo, commits with that message, pushes. |
@@ -67,14 +67,22 @@ just cc-timed prune-md just cc-sweep moby_dick prune_threshold 0.2 0.5 1 2
 
 ## Sweeps
 
-- `cc-sweep` is for settings that change the chain: `prune_threshold`,
-  `max_context` (3 on Hegel is known to fit, peak 8.4 GB; `src.chain`
-  holds 4 KB per context, so use `cc-context` or `cc-smoothing` beyond
-  that), `discount`, `vocab_size`, `smoothing`, `floor`. To see the spread
-  across splits on a small corpus, use a config with `holdout_seeds` above 1.
-- `cc-squeeze` is for settings that change only the compile: `slot_dim`,
-  `logit_dim`, `match_threshold`, `low_weight`, `decoder_rounds`,
-  `code_seed`. Add `--positions N` to change the sample (0 = everything).
+- `cc-sweep` scores the chain alone, for settings that change it:
+  `prune_threshold`, `max_context`, `discount`, `vocab_size`,
+  `smoothing`, `floor`. To see the spread across splits on a small corpus,
+  use a config with `holdout_seeds` above 1.
+- `cc-squeeze` compiles the transformer and checks it against its chain,
+  on the first split. For a setting that changes only the compile
+  (`slot_dim`, `logit_dim`, `match_threshold`, `low_weight`,
+  `decoder_rounds`, `code_seed`) it builds the chain once; for a chain
+  setting it rebuilds the chain for each value. Add `--positions N` to
+  change the sample (0 = everything).
+- `max_context` on Hegel: `cc-sweep hegel max_context 3 4` took 4.7 min
+  and peaked at 18.8 GB of a 20.5 GB machine (it also builds the unpruned
+  chain; context 3 alone peaks at 8.4 GB), so check `just cc-status` for
+  free memory first. `cc-squeeze hegel max_context 3 4` took 11.8 min and
+  peaked at 12.0 GB. `src.chain` holds 4 KB per context, so past context
+  4 use `cc-context` or `cc-smoothing`.
 - Both vary one setting. For a grid, or anything else, write a scratch
   script.
 
@@ -83,7 +91,8 @@ just cc-timed prune-md just cc-sweep moby_dick prune_threshold 0.2 0.5 1 2
 Copy `scripts/scratch_template.py` to the session scratchpad as a real
 file, edit it there, and run it with `just cc-py <path>`. Never build the
 script as a string inside another command: quoting breaks. `lab.py` has
-`config_named`, `with_setting`, `peak_gb` and `table`.
+`config_named`, `with_setting`, `build_split` (tokens and chain of the
+first split), `peak_gb` and `table`.
 
 When a scratch script gets run a second time for a new corpus or setting,
 move it into `scripts/`, give it arguments, add a `cc-` recipe and a row in

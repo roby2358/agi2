@@ -269,8 +269,12 @@ Held-out nats per token, 3 tokens of context, as shipped:
   agrees on the top token 99.3% to 99.5% of the time on all three corpora.
 - The saved Hegel model is now 94 M weights (375 MB), built in 5 minutes.
 - Longer context now pays. On Hegel the unpruned chain scores 2.34 with 3
-  tokens, 2.29 with 4 and 2.26 with 6. That is measured on the chain only;
-  no transformer with more than 3 tokens of context has been compiled.
+  tokens, 2.29 with 4 and 2.26 with 6. With 4 tokens the pruned chain
+  scores 2.30 against 2.35, and the squeezed transformer compiled from it
+  follows it nearly as closely as before (99.2% top-token agreement
+  against 99.4%, on a sample of positions), at twice
+  the contexts (398,604) and 2.3 times the weights (205 M). Nothing past
+  4 tokens has been compiled, and 3 is still what ships.
 - On the small corpus pruning now costs more (0.06 nats) and changes the
   top token on 14% of the training text. The threshold has not been
   re-tuned.
@@ -329,9 +333,11 @@ These are hypotheses to test once question 1 is answered, not claims.
   discovery. On held-out text the current defaults cost 0.013 nats
   (pruning) and nothing measurable (squeeze).
 - **Vocabulary size and context length.** Both drive table size. 512 and 3
-  work. Context 4 to 6 improves the chain under Kneser-Ney but has not been
-  compiled; one idea is a single block applied in a loop, one pass per
-  token of context.
+  work. Context 4 to 6 improves the chain under Kneser-Ney. Context 4
+  compiles on Hegel and gains 0.05 nats held out for 2.3 times the
+  weights; whether that is worth shipping is undecided. Context 5 and 6
+  have not been compiled; one idea is a single block applied in a loop,
+  one pass per token of context.
 
 Settled: credit assignment under backoff (dropped), the floor for unseen
 tokens (uniform mixing at 1e-4), how to squeeze the output side (weighted

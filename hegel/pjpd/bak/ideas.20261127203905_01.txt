@@ -1,0 +1,41 @@
+Score:   70
+ID: ship-ctx4-xkes
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T20:39:05Z
+
+agi2/hegel: ship context 4 (or longer) in the configs. Measured on Hegel through build_chain and the squeezed compile (split 0, Kneser-Ney 0.9, prune 0.5; hegel/CLAUDE.md "Context 4 on Hegel"): context 4 scores 2.298 held out against 2.347 at context 3 (top-1 44.8% against 43.1%), keeps 398,604 contexts against 195,534, and compiles to 204.8 M weights against 88.1 M (d_model 256, 3 heads); the transformer follows its chain as closely as at context 3 (KL 0.018, 99.2% top-1 agreement against 99.5%). So the gain is 0.049 nats for 2.3 times the weights. The lean scorer says context 5 and 6 add 0.02 and 0.01 more, unpruned. To settle with the user: is 0.049 nats worth 2.3 times the size on Hegel (saved weights would be roughly 800 MB); which corpora (on corpus20, first 20,000 positions, context 4 gives 2.495 against 2.529 with 17,734 contexts against 11,393; Moby Dick is unmeasured); whether discount, prune threshold or logit rank are retuned at context 4 (none was; top-1 agreement fell 0.2 to 0.3 points with KL unchanged, cause unknown); and whether a whole-corpus build, saved-weights size, forward-pass time and the full-position check are measured before deciding. Not yet measured at context 4: all of those, plus pruning cost on the training text.
+----
+Score:   60
+ID: loop-squeeze-bm6w
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: the looped block on the squeezed build. In the wide build the slots are exact, so looping should be exact. In the squeezed build each pass copies approximate 32-dim slots and subtracts the old ones, so error is fed back every pass; whether it stays bounded is unknown. To settle: is the copy actually lossy (head A's shift is a fixed linear map, so it may be exact even with random vectors and only the neuron thresholds matter), what fidelity loss is acceptable against the unlooped squeezed build, and whether the loop is wanted as the shipped architecture or as a demonstration. Related question the user raised: whether a single looped layer is really easier to compile than several distinct layers, and what a loop buys beyond saving heads (d_ff is unchanged, each pass costs a full forward pass); the appealing part is depth chosen at run time.
+----
+Score:   45
+ID: dff-shrink-5bu8
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: shrink d_ff, the one-neuron-per-kept-context cost. Everything that makes the model bigger (longer context, more text) lands in d_ff: 208 k neurons on Hegel at context 3, and neither the looped block nor more heads reduces it. Open question from PRODUCT.md. Directions not yet examined: neurons shared between contexts with similar corrections, a second low-rank factoring on the input side, pruning by a rule that knows about the squeeze. Needs a conversation about what counts as allowed under "no gradient steps" and what fidelity loss is acceptable.
+----
+Score:   40
+ID: prune-c20-9h42
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: corpus20's prune threshold under Kneser-Ney. At the shipped 0.5 pruning now costs 0.06 nats held out (2.369 against 2.309 unpruned; under Witten-Bell it cost 0.013) and changes the top token on 14% of training text, with 11,370 contexts. Threshold 0.2 gives 16,649 contexts (about the old model size) and 2.339. It is a size-against-score call for the user; the discount interacts (0.7 at threshold 0.5 gives 2.343 with 14,208 contexts). On Moby Dick and Hegel pruning is nearly free, so only corpus20 is in question.
+----
+Score:   35
+ID: temp-build-tp5m
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: compile a calibration temperature into the model. If the chain is still overconfident under Kneser-Ney (to be measured), dividing its logits by a constant compiles as a rescaled decoder and output bias with no new parts. To settle: whether that belongs in the chain (so the chain stays the reference the transformer is checked against) or only in the transformer, how the value is chosen without tuning on the text it is scored on, and how it relates to the existing sampling `temperature` key.
+----
+Score:   20
+ID: sim-recheck-jryq
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: recheck structured token vectors and the wide-window head under Kneser-Ney. Both were measured on the Witten-Bell chain and not adopted: similarity mixing in probability space gained about 0.03 to 0.11 nats beyond controls (growing with vocabulary), the wide-window trigger table 0.01 to 0.03. Part of each gain was hedging that Kneser-Ney may already supply, so the real signal could be smaller or clearer now. The scratch scripts were not kept in the repo; a recheck means rewriting them as hegel-lab scripts. To settle: whether either is worth another look at all, and at which vocabulary (the gains were largest at V = 2048).

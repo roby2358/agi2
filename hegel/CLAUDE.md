@@ -67,14 +67,17 @@ be used without recompiling.
 Kneser-Ney replaced Witten-Bell in all four configs: on every corpus it
 scores better held out with about half the contexts, and the squeezed
 transformer follows it at least as closely. It also makes context 4 and
-longer pay, which Witten-Bell did not (see "Smoothing for longer context");
-context 3 is still what ships.
+longer pay, which Witten-Bell did not (see "Smoothing for longer context").
+Context 4 runs through the chain builder and the squeezed compile on Hegel:
+2.298 held out against 2.347, for twice the contexts and 2.3 times the
+weights, with the transformer nearly as close to its chain (see "Context 4
+on Hegel"). Context 3 is still what ships; no config sets 4.
 
 What comes next is in the backlog, `pjpd/` in this directory (the
 `pjpd_*` tools, with Claude Code opened in `hegel/`; see the
 `pjpd-process` skill). Tasks are ready to work; ideas need a conversation
-with the user first. At the top: context 4 through the real chain builder,
-then the looped block on the wide build. Do not keep a to-do list here.
+with the user first. At the top: the looped block on the wide build. Do
+not keep a to-do list here.
 
 Two extensions were measured as scratch scripts and not adopted: structured
 token vectors and a wide-window head (sections below). Both were measured
@@ -596,12 +599,83 @@ neighbours instead of occurrences.
   every count is crude, and a discount per count (modified Kneser-Ney)
   was not tried. The settings were picked on the held-out text.
 - Adopted at context 3 (`smoothing = "kneser_ney"` in `src/chain.py`,
-  which reproduces this scorer's numbers exactly). Context 4 and longer
-  are not built. Unknown there: how many contexts pruning keeps (1.5 M
-  distinct at length 4), and whether rank 128 still fits the rows.
-  `build_chain` holds a 4 KB row for every context shorter than
-  `max_context` and for every kept one, so context 4 on Hegel needs at
-  least 2 GB for the first and is untried.
+  which reproduces this scorer's numbers exactly). Context 4 is measured
+  through `build_chain` and the squeezed compile in the next section.
+  Context 5 and longer are not built.
+
+### Context 4 on Hegel (measured, not shipped)
+
+`hegel.toml` with `max_context` overridden to 4 and nothing else changed
+(Kneser-Ney 0.9, prune 0.5, split 0, 5,115,014 training and 568,058
+held-out tokens). No config sets it.
+
+The chain, from `just cc-sweep hegel max_context 3 4` (4.7 min in all,
+peak 18.8 GB; context 4 alone 234 s):
+
+| context | contexts kept | held-out NLL | top-1 | unpruned NLL |
+|---|---|---|---|---|
+| 3 | 195,534 | 2.347 | 43.1% | 2.341 |
+| 4 | 398,604 | 2.298 | 44.8% | 2.285 |
+
+Contexts at context 4, by length:
+
+| length | distinct | seen twice or more | kept |
+|---|---|---|---|
+| 1 | 364 | 363 | 363 |
+| 2 | 39,577 | 33,789 | 26,510 |
+| 3 | 481,982 | 273,162 | 119,383 |
+| 4 | 1,525,429 | 535,728 | 252,348 |
+
+The squeezed transformer against its chain, from `just cc-squeeze hegel
+max_context 3 4` (slots 32, rank 128, tau 0.7, 4 rounds; the first 20,000
+positions of each text; 11.8 min for both, peak 12.0 GB). Context 3 took
+29 s to build the chain and 215 s to compile, context 4 took 62 s and
+323 s. The context 3 column repeats the table under "Hegel build".
+
+| | context 3 | context 4 |
+|---|---|---|
+| `d_model`, heads | 224, 2 | 256, 3 |
+| `d_ff` | 195,534 | 398,604 |
+| weights | 88.1 M (43.2 M nonzero) | 204.8 M (97.0 M nonzero) |
+| training text: mean KL (nats) | 0.017 | 0.018 |
+| training text: top-1 agreement | 99.5% | 99.2% |
+| training text: NLL chain / transformer | 2.061 / 2.098 | 1.865 / 1.907 |
+| held-out: mean KL (nats) | 0.017 | 0.017 |
+| held-out: top-1 agreement | 99.4% | 99.2% |
+| held-out: NLL chain / transformer | 2.313 / 2.303 | 2.272 / 2.257 |
+
+- **The real builder agrees with the lean scorer**: 2.285 unpruned at
+  context 4, the same as `cc-smoothing`.
+- **Context 4 pays after pruning too**: 0.049 nats and 1.7 points of
+  top-1 over context 3. Pruning costs 0.013 nats at context 4 against
+  0.006 at context 3.
+- **It costs twice the neurons**: 398,604 against 195,534, and 2.3 times
+  the weights because `d_model` grows by one slot. Pruning keeps 17% of
+  the length-4 contexts.
+- Fewer length-3 contexts are kept than at context 3: 119,383 against
+  168,661, with lengths 1 and 2 unchanged (146,256 of length 1 to 3 in
+  all, against 195,534). The likely reason, not checked: length-3 contexts
+  now count distinct left neighbours, not occurrences, so their rows
+  differ from context 3's.
+- **Rank 128 still fits the rows.** KL is unchanged at 0.017 to 0.018;
+  top-1 agreement drops 0.2 to 0.3 points.
+- **Memory is the limit.** Measured: the squeeze run peaks at 12.0 GB
+  (context 3 alone 6.2 GB) and the sweep at 18.8 GB of the 20.5 GB on
+  this machine (context 3 alone 8.4 GB). The sweep's extra is put down to
+  the unpruned chain it also scores; that is read from the code, not
+  profiled. Unpruned, every
+  context is kept: 2.05 M rows of 4 KB is 8.4 GB, which `build_chain`
+  holds as a list and then copies into one array. By the same arithmetic
+  context 5 unpruned (4.7 M rows, 19 GB) will not fit; the pruned build
+  might. Neither was tried.
+- corpus20 shows the same pattern (`just cc-squeeze corpus20_squeezed
+  max_context 3 4`, split 0): 17,734 contexts kept against 11,393, the
+  length-3 ones falling from 6,755 to 4,661; KL 0.013 at both, top-1
+  agreement 99.4% / 99.3% against 99.4% / 99.4%; held-out NLL 2.495
+  against 2.529 for the chain on that one split.
+- Not done at context 4: the whole-corpus build and saved weights, the
+  full check over every position, samples, and any retuning of the
+  discount, the prune threshold or the rank.
 
 ### Looped block (design, not built)
 

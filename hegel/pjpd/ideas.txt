@@ -1,9 +1,9 @@
 Score:   70
 ID: ship-ctx4-xkes
 Created: 2026-11-27T18:13:04Z
-Updated: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T20:39:05Z
 
-agi2/hegel: ship context 4 (or longer) in the configs. Kneser-Ney makes it pay on Hegel in the lean scorer (2.341 at context 3, 2.285 at 4, 2.266 at 5, 2.259 at 6, unpruned). Waits on the measurement of context 4 through the real builder. To settle with the user: which corpora (it may not pay on corpus20 or Moby Dick), which context length, what size and build time is acceptable (1.5 M distinct length-4 contexts on Hegel before pruning), whether the prune threshold or discount moves with it, and whether build_chain's dense 4 KB row per context has to be replaced by something sparse first. The compiler already handles any context length with one head per extra token.
+agi2/hegel: ship context 4 (or longer) in the configs. Measured on Hegel through build_chain and the squeezed compile (split 0, Kneser-Ney 0.9, prune 0.5; hegel/CLAUDE.md "Context 4 on Hegel"): context 4 scores 2.298 held out against 2.347 at context 3 (top-1 44.8% against 43.1%), keeps 398,604 contexts against 195,534, and compiles to 204.8 M weights against 88.1 M (d_model 256, 3 heads); the transformer follows its chain as closely as at context 3 (KL 0.018, 99.2% top-1 agreement against 99.5%). So the gain is 0.049 nats for 2.3 times the weights. The lean scorer says context 5 and 6 add 0.02 and 0.01 more, unpruned. To settle with the user: is 0.049 nats worth 2.3 times the size on Hegel (saved weights would be roughly 800 MB); which corpora (on corpus20, first 20,000 positions, context 4 gives 2.495 against 2.529 with 17,734 contexts against 11,393; Moby Dick is unmeasured); whether discount, prune threshold or logit rank are retuned at context 4 (none was; top-1 agreement fell 0.2 to 0.3 points with KL unchanged, cause unknown); and whether a whole-corpus build, saved-weights size, forward-pass time and the full-position check are measured before deciding. Not yet measured at context 4: all of those, plus pruning cost on the training text.
 ----
 Score:   60
 ID: loop-squeeze-bm6w
@@ -11,6 +11,13 @@ Created: 2026-11-27T18:13:04Z
 Updated: 2026-11-27T18:13:04Z
 
 agi2/hegel: the looped block on the squeezed build. In the wide build the slots are exact, so looping should be exact. In the squeezed build each pass copies approximate 32-dim slots and subtracts the old ones, so error is fed back every pass; whether it stays bounded is unknown. To settle: is the copy actually lossy (head A's shift is a fixed linear map, so it may be exact even with random vectors and only the neuron thresholds matter), what fidelity loss is acceptable against the unlooped squeezed build, and whether the loop is wanted as the shipped architecture or as a demonstration. Related question the user raised: whether a single looped layer is really easier to compile than several distinct layers, and what a loop buys beyond saving heads (d_ff is unchanged, each pass costs a full forward pass); the appealing part is depth chosen at run time.
+----
+Score:   50
+ID: chain-memory-3zyg
+Created: 2026-11-27T20:39:05Z
+Updated: 2026-11-27T20:39:05Z
+
+agi2/hegel: cut the memory the chain builder and the sweep use, so context 5 can be measured through build_chain. `just cc-sweep hegel max_context 3 4` peaked at 18.8 GB on a 20.5 GB machine, while the pruned context-4 chain plus the squeezed compile peak at 12 GB. Read from the code, not profiled: score_split in src/holdout.py always builds the unpruned chain too (2.05 M dense 4 KB rows at context 4, about 8.4 GB), and build_chain collects rows in a list and then copies them with np.stack. By the same arithmetic context 5 unpruned (about 4.7 M rows) will not fit. Options to talk through: profile first to confirm where it goes; preallocate the row array instead of list plus stack; make the unpruned score optional in cc-sweep (the lean scorer cc-smoothing already gives it); float16 or sparse rows; or build the unpruned chain only for the contexts the held-out text meets. Needs the user's call on how far to go: a cheap fix that makes context 4 safe, or a rewrite that reaches context 5 and 6.
 ----
 Score:   45
 ID: dff-shrink-5bu8
@@ -25,6 +32,13 @@ Created: 2026-11-27T18:13:04Z
 Updated: 2026-11-27T18:13:04Z
 
 agi2/hegel: corpus20's prune threshold under Kneser-Ney. At the shipped 0.5 pruning now costs 0.06 nats held out (2.369 against 2.309 unpruned; under Witten-Bell it cost 0.013) and changes the top token on 14% of training text, with 11,370 contexts. Threshold 0.2 gives 16,649 contexts (about the old model size) and 2.339. It is a size-against-score call for the user; the discount interacts (0.7 at threshold 0.5 gives 2.343 with 14,208 contexts). On Moby Dick and Hegel pruning is nearly free, so only corpus20 is in question.
+----
+Score:   40
+ID: depth-nested-qpre
+Created: 2026-11-27T20:39:05Z
+Updated: 2026-11-27T20:39:05Z
+
+agi2/hegel: a chain whose shorter-context models are nested, so depth can really be chosen at run time. Found while measuring context 4: with max_context 4 the builder keeps 119,383 length-3 contexts on Hegel, against 168,661 when 3 is the maximum (corpus20: 4,661 against 6,755). The likely cause, unchecked: under Kneser-Ney a length-3 context below the top level counts distinct left neighbours instead of occurrences, so its distribution and its pruning gain both change. A context-4 model is therefore not the context-3 model plus extra neurons, and a looped block compiled for context 4 and run for one pass fewer does not give the context-3 chain: it gives the context-4 chain's lower-order (continuation-count) estimate, which is a worse predictor on its own. To settle: first confirm the cause; then whether run-time depth matters enough to want it (the user finds depth chosen at run time the appealing part of the loop); and if so how: accept the lower-order estimate at shallow depth and measure how bad it is, or carry both kinds of row for shorter contexts (more neurons, and the telescoping deltas would need a pass-dependent switch, which the design avoids by having no step counter).
 ----
 Score:   35
 ID: temp-build-tp5m
