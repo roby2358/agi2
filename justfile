@@ -15,6 +15,7 @@ help:
     @echo 'transformer, so one pair of recipes covers both. run takes an optional quoted'
     @echo 'prompt (defaults to "Once upon a time"). Since the justfile lives at the repo'
     @echo 'root, it works from anywhere in the repo -- just searches upward for it.'
+    @echo 'The exception is hegel/, which has its own justfile (compile, run).'
     @echo ''
     @echo 'Examples:'
     @echo '  just train lilwill               -> uv run python agi2_train.py resources/lilwill.toml'
@@ -24,14 +25,6 @@ help:
 # Train a model: just train lilwill_rwkv
 train model:
     cd semantic && uv run python {{ if model =~ "rwkv" { "rwkv_train.py" } else { "agi2_train.py" } }} resources/{{ model }}.toml
-
-# Compile a transformer from a Markov chain (no training): just hegel corpus20
-hegel config="corpus20":
-    cd hegel && uv run python hegel_compile.py resources/{{ config }}.toml
-
-# Continue a source string with the compiled transformer; no prompt = interactive
-hegel-run prompt="" config="corpus20":
-    cd hegel && uv run python hegel_generate.py resources/{{ config }}.toml {{ if prompt == "" { "" } else { quote(prompt) } }}
 
 # Generate from a trained model: just run lilwill_rwkv "What ho"
 run model prompt="Once upon a time":

@@ -182,7 +182,7 @@ continuations.
 
 ## Using it
 
-`hegel_generate.py` (or `just hegel-run "source string"`) compiles a model
+`hegel_generate.py` (or `just run "source string"` from `hegel/`) compiles a model
 from a config and continues a source string; with no string it prompts
 interactively.
 
@@ -279,6 +279,18 @@ These are hypotheses to test once question 1 is answered, not claims.
   meaningful (" sea" sits next to " whale", " fish" and " ship"), firing
   for similar contexts still only hurts, and blending inside the chain is
   worth about 0.1 nats of 4.6.
+- **Can anything reach past the context?** A head that averages the last 50
+  tokens, with a table counted from the corpus saying which tokens raise
+  which, was measured before building. It carries real signal (a window
+  from the wrong place gains nothing) but only 0.01 to 0.03 nats, on
+  corpus20 and on Moby Dick. Not built. Samples still have no thread
+  longer than three tokens, and this is not the way to get one.
+- **The chain is overconfident.** Dividing its logits by 1.2 gains 0.07 to
+  0.14 nats held out, more than anything else tried, and needs no new
+  parts. Measured on one split; not yet built.
+- **Does it scale?** Moby Dick (ten times the text) compiles in about 8
+  minutes on a CPU: 135,713 contexts, 61 M weights, and the squeezed model
+  agrees with its chain on the top token 98.7% of the time.
 - **How close is "pretty close"?** Both the pruning sweep and the rank sweep
   show cost rising steadily with no knee, so it is a choice and not a
   discovery. On held-out text the current defaults cost 0.013 nats

@@ -57,9 +57,14 @@ random splits with the range in brackets:
 `hegel_generate.py` continues a source string with either build, compiled
 on the whole corpus.
 
-Structured token vectors were tried and not adopted (see "Structured token
-vectors" below): near-miss firing does not help on this corpus. No next step
-is chosen yet; the candidates are in "Open questions".
+The squeezed build also compiles on `../samples/moby_dick_pg2701.txt` (ten
+times the text); see "Moby Dick compile" below.
+
+Two extensions were measured as scratch scripts and not adopted: structured
+token vectors and a wide-window head (sections below). Neither moves
+held-out NLL by more than a few hundredths of a nat. Dividing the logits by
+a temperature of 1.2 gains more than either (see "Wide-window head") and is
+the cheapest candidate next step; nothing is chosen yet.
 
 ## Files and commands
 
@@ -68,6 +73,7 @@ hegel_compile.py        entry point: tokenize, chain, compile, verify, sample
 hegel_generate.py       source string in, continuation out; or interactive
 resources/corpus20.toml           the exact wide build
 resources/corpus20_squeezed.toml  32-dim slots, 128-dim logit code
+resources/moby_dick.toml          the squeezed build on Moby Dick (about 8 min)
 src/config.py           HegelConfig, load_config (TOML, unknown keys rejected)
 src/corpus.py           normalize (one stream), tokenize (BPE from semantic/)
 src/chain.py            count_contexts, build_chain (pruning), Chain (backoff)
@@ -79,15 +85,17 @@ src/holdout.py          score the chain on several random held-out splits
 src/verify.py           FidelityMeter, chain/model comparisons, coupled sampling
 src/generation.py       respond: continue a source string
 tests/                  one test file per src module
+justfile                the compile and run recipes
 ```
 
 ```bash
-just hegel                           # compile + verify corpus20 (wide)
-just hegel corpus20_squeezed         # the squeezed build
-just hegel-run "source string"       # continue a string (wide build)
-just hegel-run "source string" corpus20_squeezed
-just hegel-run                       # interactive; empty line quits
 cd hegel
+just compile                         # compile + verify corpus20 (wide)
+just compile corpus20_squeezed       # the squeezed build
+just compile moby_dick               # squeezed, Moby Dick, about 8 min
+just run "source string"             # continue a string (wide build)
+just run "source string" corpus20_squeezed
+just run                             # interactive; empty line quits
 uv run python hegel_compile.py resources/corpus20_squeezed.toml
 uv run python hegel_generate.py resources/corpus20.toml "source string"
 uv run pytest tests        # 101 tests, about 15 s
@@ -355,6 +363,73 @@ NLL per token is not comparable across vocabulary sizes.
   levelled off at the largest weight tried (0.2 and 0.1).
 - Top-1 accuracy moves by at most 0.2 points in any row that helps.
 
+### Wide-window head (measured, not adopted)
+
+The idea: one more head averages the tokens further back than the chain
+sees (distances 4 to W from the token being predicted), and a direct linear
+map from that average adds to the logits. The map is a table of log ratios
+counted from the training text: how often token v followed a window holding
+token u, over how often it was expected, with k pseudo-counts on both. Two
+versions of "expected": the unigram rate, and the chain's own prediction
+with each half of the training text scored by a chain built on the other
+half. Measured on the chain's exact logits, split 0, all held-out positions,
+with the scale picked on the held-out text (so gains are upper bounds).
+Nothing in `src/` changed.
+
+| | corpus20 | Moby Dick V = 512 | Moby Dick V = 2048 |
+|---|---|---|---|
+| chain | 2.643 | 3.057 | 4.603 |
+| trigger table against unigram, W = 50 (best scale) | 2.628 | 3.046 | 4.576 |
+| the same table, window taken from elsewhere in the text | 2.642 | 3.057 | 4.603 |
+| trigger table against the chain, W = 50 | 2.634 | 3.052 | 4.587 |
+| logit bonus for tokens present in the window, W = 50 | 2.642 | 3.054 | 4.595 |
+| cache: mix in the window's token frequencies, probability space, W = 1000 | 2.614 (W = 200) | 3.032 | 4.546 |
+| control: unigram mix | 2.606 | 3.032 | 4.522 |
+| control: logits divided by temperature 1.2 | 2.574 | 2.974 | 4.465 |
+
+- **The window carries real signal, and it is small.** The best gain is
+  0.011 to 0.014 nats at V = 512 and about 0.03 at V = 2048. A window from
+  elsewhere in the text gains nothing, so it is content and not hedging.
+  Top-1 accuracy moves by at most 0.2 points.
+- W = 50 is the best window; 200 and 1000 are worse for the trigger table.
+  The unigram version beats the cross-fitted chain version everywhere.
+- The strongest learned triggers are sensible at V = 2048 (" we" raises
+  " our", " you" raises " your", " more" raises " than", and most common
+  words raise themselves by about 0.4 nats) and mostly punctuation and
+  byte fragments at V = 512.
+- The probability-space cache does no better than mixing in plain unigram.
+- **Plain temperature beats everything tried so far**: dividing the chain's
+  logits by 1.2 gains 0.07 nats on corpus20, 0.08 and 0.14 on Moby Dick.
+  The smoothed chain is overconfident, as the unigram control already
+  said. This compiles as a rescaled decoder and output bias, with no new
+  parts. It was measured on one split with the temperature picked on the
+  held-out text; not yet built or checked across splits.
+
+### Moby Dick compile (measured, `moby_dick.toml`)
+
+Squeezed build, V = 512, context 3, prune 0.5, split 0: 512,011 training
+and 57,072 held-out tokens; 135,713 contexts kept of 196,170 (pruning costs
+KL 0.028 against the unpruned chain on the training text). `d_model` 224,
+`d_ff` 135,713, 61 M weights (30 M nonzero). The whole run takes 8 min 25 s
+on 24 CPU threads, with a scratch job running beside it.
+
+| | training text | held-out |
+|---|---|---|
+| mean KL against the chain (nats) | 0.024 | 0.023 |
+| top-1 agreement | 98.7% | 98.9% |
+| NLL: chain / transformer | 1.476 / 1.498 | 3.060 / 3.000 |
+
+- Rank 128 holds up with 7.6 times the contexts: KL doubles from corpus20's
+  0.012 and top-1 agreement is unchanged.
+- Held-out, mean of 3 splits: unigram 5.24, 1-token chain 3.76 (13.9%),
+  unpruned 3.069 (33.9%), as configured 3.063 (33.7%). Splits differ by
+  0.03 nats here, against more than a nat on corpus20. Pruning slightly
+  helps held out.
+- Coupled samples leave the chain's within about ten tokens (2 to 11 of 80
+  identical), far sooner than on corpus20, since one differing draw is
+  enough. Both read as local Moby Dick with no thread across a sentence.
+- `hegel_generate.py` on this config has not been timed.
+
 ### Held-out behaviour (measured)
 
 Numbers are NLL in nats per token; see the table in "Status".
@@ -397,5 +472,6 @@ Numbers are NLL in nats per token; see the table in "Status".
 ## Open questions
 
 Tracked in `PRODUCT.md`: shrinking `d_ff`, the closeness threshold,
-vocabulary size and context length, and whether token similarity pays on a
-larger corpus or a more word-like vocabulary.
+vocabulary size and context length, whether token similarity pays, and what
+would give samples a thread longer than the context (the wide-window head
+did not).

@@ -1,0 +1,13 @@
+# Run from hegel/. Config names are TOML basenames in resources/
+# (corpus20, corpus20_squeezed, moby_dick).
+
+_default:
+    @just --list --unsorted
+
+# Compile a transformer from a Markov chain (no training) and verify it: just compile corpus20_squeezed
+compile config="corpus20":
+    uv run python hegel_compile.py resources/{{ config }}.toml
+
+# Continue a source string with the compiled transformer; no prompt = interactive
+run prompt="" config="corpus20":
+    uv run python hegel_generate.py resources/{{ config }}.toml {{ if prompt == "" { "" } else { quote(prompt) } }}

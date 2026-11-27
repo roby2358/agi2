@@ -9,7 +9,7 @@ AGI2 is a repository of small language-model experiments in PyTorch. Each experi
 - `semantic/` — a from-scratch GPT-2 and an RWKV model, trained on text with cosine-similarity objectives (`pairwise`, `infonce`) or plain cross-entropy (`ce`). Full pipeline: tokenization, training, checkpoints, generation (sampling + beam search). Configured by TOML files, not CLI arguments.
 - `hegel/` — a transformer compiled from a Markov chain with zero training. See `hegel/PRODUCT.md` and `hegel/CLAUDE.md`.
 
-Shared at the root: `samples/` (corpora), `pyproject.toml` and `uv.lock` (one environment for everything), `justfile`, `pjpd/` (backlog).
+Shared at the root: `samples/` (corpora), `pyproject.toml` and `uv.lock` (one environment for everything), `pjpd/` (backlog). The root `justfile` holds the semantic recipes; `hegel/` has its own.
 
 ## Commands
 
@@ -22,7 +22,7 @@ The repo is shared between the host and a container, and each has its own venv: 
 
 ### Running (semantic)
 
-From anywhere in the repo, via the justfile. The model name is a TOML basename in `semantic/resources/`; names containing "rwkv" route to the RWKV scripts.
+From anywhere in the repo except `hegel/`, via the root justfile. The model name is a TOML basename in `semantic/resources/`; names containing "rwkv" route to the RWKV scripts.
 
 ```bash
 just train lilwill                  # agi2_train.py resources/lilwill.toml
@@ -44,10 +44,13 @@ The `rwkv_*.py` scripts mirror these. `estimate_memory.py` at the root estimates
 
 ### Running (hegel)
 
+From `hegel/`, via its own justfile:
+
 ```bash
-just hegel                          # compile + verify: hegel_compile.py resources/corpus20.toml
-just hegel corpus20_squeezed        # the squeezed build
-just hegel-run "What ho"            # continue a source string; no string = interactive
+cd hegel
+just compile                        # compile + verify: hegel_compile.py resources/corpus20.toml
+just compile corpus20_squeezed      # the squeezed build
+just run "What ho"                  # continue a source string; no string = interactive
 ```
 
 Details, tests and lint commands are in `hegel/CLAUDE.md`.
