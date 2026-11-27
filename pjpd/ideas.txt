@@ -13,3 +13,8 @@ Add conversation export/import functionality to InteractivePrompt for saving and
 Score:   20
 ID: context-mgmt-kitf
 Add configurable context management strategies to InteractivePrompt for flexible conversation handling
+---
+Score:   50
+ID: htp-vcyf
+Add Harmonic Token Projection (HTP, arXiv:2511.20665) to agi2 - deterministic, training-free, vocabulary-free, reversible text embeddings that compute semantic relationships from fixed harmonic geometry. Fixed but limited: weak at word order. Explore as an alternative/complement to learned token embeddings, or as a cheap semantic-similarity tool, pairing it with the transformer to recover order
+---
