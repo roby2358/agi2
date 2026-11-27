@@ -267,11 +267,18 @@ These are hypotheses to test once question 1 is answered, not claims.
   per kept context, 17,812 of them) is nearly all of the model. Pruning is
   the only lever on it so far. It is cheap on held-out text and costly on
   the training text.
-- **Structured token vectors.** Random vectors make near-miss firing pure
-  noise, to be suppressed. Vectors that put similar tokens close together
-  could make it useful: a context neuron would fire for a context it never
-  saw. That is the route to generalisation, and it is untried. With a
-  calibrated chain and a held-out measure, an improvement would now show.
+- **Does token similarity pay anywhere?** Vectors that put similar tokens
+  close together were tried, so that a context neuron would fire for a
+  context it never saw. On this corpus it did not help at any setting: the
+  best case equals the chain, and looser thresholds are much worse, because
+  several similar contexts fire together and their corrections add up.
+  Blending similar contexts' distributions inside the chain instead shows a
+  small real gain (about 0.03 nats beyond plain extra hedging), too small
+  to build. A larger corpus did not change the answer: on Moby Dick (ten
+  times the text) with a 2048-token vocabulary the vectors are clearly
+  meaningful (" sea" sits next to " whale", " fish" and " ship"), firing
+  for similar contexts still only hurts, and blending inside the chain is
+  worth about 0.1 nats of 4.6.
 - **How close is "pretty close"?** Both the pruning sweep and the rank sweep
   show cost rising steadily with no knee, so it is a choice and not a
   discovery. On held-out text the current defaults cost 0.013 nats

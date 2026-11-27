@@ -57,9 +57,9 @@ random splits with the range in brackets:
 `hegel_generate.py` continues a source string with either build, compiled
 on the whole corpus.
 
-Next step: structured (not random) token vectors, so a near-miss context
-fires usefully instead of being suppressed. Now that the chain is
-calibrated, a held-out improvement from that would be visible.
+Structured token vectors were tried and not adopted (see "Structured token
+vectors" below): near-miss firing does not help on this corpus. No next step
+is chosen yet; the candidates are in "Open questions".
 
 ## Files and commands
 
@@ -289,8 +289,71 @@ What was tried on the way, all at rank 128 (mean KL in nats; top-1):
 - Smoothing costs the squeeze about 8 times the KL at the same rank.
 - `decoder_rounds` beyond 4 does not help at rank 128.
 
-Not tried yet: structured (not random) token vectors, which is where
-near-miss firing could become generalisation instead of noise.
+### Structured token vectors (measured, not adopted)
+
+Token vectors were built from the training bigram counts: positive PMI of
+each token with what follows and what precedes it, centred, reduced by SVD,
+unit length. Neighbours look right where a token is a word (" your" is
+nearest " their" at 0.91, " or" nearest " to" and " and") and vague where
+it is a fragment ("t", "our"), which most of the 512 tokens are. Measured
+on the wide build's exact logits, held-out NLL, mean of splits 0 to 2,
+chain 2.460 and 47.8% top-1. The experiments were scratch scripts; nothing
+in `src/` changed.
+
+| variant | best held-out NLL |
+|---|---|
+| near-miss neurons fire as compiled, 32 dims, tau 0.7 / 0.9 | 3.25 / 2.484 |
+| the same, 64 dims, tau 0.7 / 0.9 | 2.574 / 2.463 |
+| near-miss output scaled to 0.2 | 2.464 |
+| oracle: only contexts longer than the exact match may fire partially | 2.459 |
+| oracle: the same, averaged instead of summed | 2.459 |
+| mix 10% of similar contexts' average distribution, in probability space | 2.396 |
+| control: the same mix with random vectors (5%) | 2.439 |
+| control: mix in 5% unigram | 2.430 |
+
+- **Near-miss firing never helps, at any threshold.** A neuron adds its
+  context's correction in log space. Several similar contexts firing at
+  once sum their corrections and overshoot, and they also fire on top of an
+  exact match that needed no help. Lower thresholds are steadily worse.
+- **Removing both faults does not rescue it.** The two oracle rows gate and
+  average in ways one ReLU layer cannot, and still gain 0.001 nats.
+- **There is a little similarity signal, in probability space.** Mixing in
+  the average distribution of similar contexts gains 0.064 nats; the same
+  mix with random vectors or plain unigram gains about 0.03, so half of it
+  is only extra hedging. Top-1 accuracy does not move in any row. The mix
+  weight and threshold were picked on the held-out text, so these gains are
+  upper bounds.
+- A probability-space mix is not something a neuron can add to logits. It
+  would have to go into the chain (each context's distribution smoothed
+  toward similar contexts), with the compiler unchanged. For about 0.03
+  nats that was not built.
+- The unigram control says the smoothed chain is still slightly
+  overconfident: 5% more unigram mass is worth 0.03 nats.
+
+The same test on `../samples/moby_dick_pg2701.txt` (ten times the text;
+split 0, first 20,000 held-out positions, prune 0.5) gives the same answer.
+NLL per token is not comparable across vocabulary sizes.
+
+| | V = 512 | V = 2048 |
+|---|---|---|
+| training / held-out tokens | 512,011 / 57,072 | 339,510 / 37,871 |
+| contexts kept | 135,713 | 193,843 |
+| chain | 3.083; 33.6% | 4.607; 22.6% |
+| near-miss firing, 64 dims, tau 0.9 | 3.198 | 4.726 |
+| near-miss firing, 64 dims, tau 0.7 | 4.49 | 6.30 |
+| oracle: gated and averaged | 3.081 | 4.604 |
+| probability-space mix, similar contexts (best tried) | 3.011 | 4.421 |
+| control: the same mix, random vectors (best tried) | 3.055 | 4.547 |
+| control: unigram mix (best tried) | 3.054 | 4.536 |
+
+- At V = 2048 the vectors are plainly meaningful (" sea" is nearest
+  " whale", " fish", " air", " ship"; " which" nearest " who"; "er" nearest
+  "ers", "ering"), and near-miss firing still only hurts.
+- The probability-space gain beyond the controls grows with the
+  vocabulary: about 0.03 nats on corpus20, 0.04 at V = 512 here, 0.11 at
+  V = 2048. At V = 2048 neither the mix nor the unigram control had
+  levelled off at the largest weight tried (0.2 and 0.1).
+- Top-1 accuracy moves by at most 0.2 points in any row that helps.
 
 ### Held-out behaviour (measured)
 
@@ -333,5 +396,6 @@ Numbers are NLL in nats per token; see the table in "Status".
 
 ## Open questions
 
-Tracked in `PRODUCT.md`: structured token vectors, shrinking `d_ff`, the
-closeness threshold, vocabulary size and context length.
+Tracked in `PRODUCT.md`: shrinking `d_ff`, the closeness threshold,
+vocabulary size and context length, and whether token similarity pays on a
+larger corpus or a more word-like vocabulary.
