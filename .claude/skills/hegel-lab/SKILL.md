@@ -23,6 +23,7 @@ the script or the recipe here; do not work around it inline.
 | `just cc-status [lines]` | Which timed runs are going, for how long, the tail of each log, free memory. |
 | `just cc-stats <config>` | Tokens, distinct contexts by length, contexts kept, rough weight count. No model built. |
 | `just cc-sweep <config> <setting> <values...>` | Held-out NLL and top-1 of the chain for each value, over the config's splits. No model built. |
+| `just cc-context <config> [max]` | Held-out NLL and top-1 of the unpruned chain at context lengths 1 to max, plus distinct contexts per length. Lean on memory, so it works past context 3 on Hegel (26 s for 6). Needs vocabulary 512. |
 | `just cc-squeeze <config> <setting> <values...>` | Compiles the transformer for each value on one fixed chain; fidelity on a sample of positions. |
 | `just cc-throughput <config> [tokens]` | Load time and forward-pass time of saved weights. |
 | `just cc-py <script> [args...]` | Runs a scratch script with `src.*` and `lab` importable. |
@@ -66,7 +67,8 @@ just cc-timed prune-md just cc-sweep moby_dick prune_threshold 0.2 0.5 1 2
 ## Sweeps
 
 - `cc-sweep` is for settings that change the chain: `prune_threshold`,
-  `max_context`, `vocab_size`, `smoothing`, `floor`. To see the spread
+  `max_context` (up to 3 on Hegel; `src.chain` holds 4 KB per context
+  seen, so use `cc-context` beyond that), `vocab_size`, `smoothing`, `floor`. To see the spread
   across splits on a small corpus, use a config with `holdout_seeds` above 1.
 - `cc-squeeze` is for settings that change only the compile: `slot_dim`,
   `logit_dim`, `match_threshold`, `low_weight`, `decoder_rounds`,

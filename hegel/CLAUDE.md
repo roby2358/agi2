@@ -119,7 +119,7 @@ Run from `hegel/`: scripts and tests import `src.*` relative to it.
 The `cc-` recipes script what kept being retyped: `cc-check`, `cc-fmt`,
 `cc-timed` and `cc-status` (long runs with a log, time and peak memory),
 `cc-stats` (size up a corpus), `cc-sweep` and `cc-squeeze` (one setting,
-several values), `cc-throughput`, `cc-py` (run a scratch script),
+several values), `cc-context` (context lengths past 3), `cc-throughput`, `cc-py` (run a scratch script),
 `cc-commit` (stage all, commit from a message file, push). The
 `hegel-lab` skill says when to use each. Use them rather than typing the
 commands out; a measurement run twice becomes a script there with a recipe.
@@ -489,6 +489,36 @@ the unpruned chain on the training text); `d_ff` 372,721, 168 M weights.
   2.428 (43.1%), as configured 2.426 (43.1%). Hegel is much more
   predictable than Moby Dick (3.06, 33.7%) at the same settings.
 - Coupled samples leave the chain's within 3 to 7 tokens of 80.
+
+### Longer context on Hegel (measured, `just cc-context hegel 6`)
+
+Unpruned smoothed chain, split 0, all 568,058 held-out tokens. The scorer
+is `long_context.py` in the hegel-lab skill; it reproduces the chain's
+numbers at context 1 and 3 exactly.
+
+| context | distinct contexts of that length | seen twice or more | held-out NLL | top-1 | held-out positions matching at full length |
+|---|---|---|---|---|---|
+| 1 | 364 | 363 | 3.493 | 16.6% | 100% |
+| 2 | 39,577 | 33,789 | 2.595 | 36.6% | 99.9% |
+| 3 | 481,982 | 273,162 | 2.428 | 43.1% | 95.7% |
+| 4 | 1,525,429 | 535,728 | 2.483 | 44.8% | 80.2% |
+| 5 | 2,647,755 | 586,351 | 2.575 | 45.4% | 59.1% |
+| 6 | 3,547,777 | 510,876 | 2.657 | 45.6% | 40.1% |
+
+- **Longer context knows more and scores worse.** Top-1 accuracy rises 2.5
+  points from context 3 to 6 while NLL gets worse by 0.23 nats. The same
+  on corpus20 (context 4: 2.707 against 2.659, top-1 46.3% against 45.3%).
+  That is calibration, not information: Witten-Bell gives a context seen
+  once with one continuation half the say, and most long contexts are
+  seen once.
+- So context 3 is the best this smoothing can use, and longer context
+  needs a better-calibrated chain first (more weight to shorter contexts
+  for rarely seen ones; not tried).
+- Past context 3 the contexts multiply faster than they repeat: length 4
+  has 3.2 times the distinct contexts of length 3 and 2.0 times those
+  seen twice.
+- `src.chain.build_chain` keeps a 4 KB row for every context seen, so it
+  cannot build context 4 on Hegel in memory (1.5 M contexts).
 
 ### Held-out behaviour (measured)
 
