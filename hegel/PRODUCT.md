@@ -244,6 +244,37 @@ Held-out, mean of five splits:
 The shipped squeezed model: 8.3 M weights, 2.62 nats per token on held-out
 text.
 
+## Fourth milestone: smoothing that knows what it has not seen
+
+Witten-Bell trusted rare contexts too much: a context seen once got half
+the say. Top-token accuracy kept rising with longer contexts while the
+score got worse, on every corpus. Kneser-Ney smoothing replaces it. Every
+count gives up a fixed discount to the shorter context, and shorter
+contexts count how many different things preceded them, not how often they
+occurred. Again nothing in the compiler changed.
+
+### Result
+
+Held-out nats per token, 3 tokens of context, as shipped:
+
+| corpus | Witten-Bell | Kneser-Ney | contexts kept, before and after |
+|---|---|---|---|
+| corpus20 (mean of 5 splits) | 2.47 | 2.37 | 17,915 to 11,370 |
+| Moby Dick (mean of 3 splits) | 3.06 | 2.90 | 135,713 to 47,011 |
+| Hegel (one split) | 2.43 | 2.35 | 372,721 to 195,534 |
+
+- The models are a third to a half smaller, because the same pruning rule
+  finds fewer contexts worth keeping, and they predict better.
+- The squeezed transformer follows the new chain at least as closely: it
+  agrees on the top token 99.3% to 99.5% of the time on all three corpora.
+- The saved Hegel model is now 94 M weights (375 MB), built in 5 minutes.
+- Longer context now pays. On Hegel the unpruned chain scores 2.34 with 3
+  tokens, 2.29 with 4 and 2.26 with 6. That is measured on the chain only;
+  no transformer with more than 3 tokens of context has been compiled.
+- On the small corpus pruning now costs more (0.06 nats) and changes the
+  top token on 14% of the training text. The threshold has not been
+  re-tuned.
+
 ## Doors to look behind (question 2)
 
 These are hypotheses to test once question 1 is answered, not claims.
@@ -265,7 +296,7 @@ These are hypotheses to test once question 1 is answered, not claims.
 ## Open questions
 
 - **Shrinking `d_ff`.** After the squeeze, the feed-forward layer (one neuron
-  per kept context, 17,812 of them) is nearly all of the model. Pruning is
+  per kept context, 11,393 of them on corpus20) is nearly all of the model. Pruning is
   the only lever on it so far. It is cheap on held-out text and costly on
   the training text.
 - **Does token similarity pay anywhere?** Vectors that put similar tokens
@@ -289,15 +320,18 @@ These are hypotheses to test once question 1 is answered, not claims.
 - **The chain is overconfident.** Dividing its logits by 1.2 gains 0.07 to
   0.14 nats held out, more than anything else tried, and needs no new
   parts. Measured on one split; not yet built.
-- **Does it scale?** Moby Dick (ten times the text) compiles in about 8
-  minutes on a CPU: 135,713 contexts, 61 M weights, and the squeezed model
-  agrees with its chain on the top token 98.7% of the time.
+- **Does it scale?** Moby Dick (ten times the text) compiles in about 3
+  minutes on a CPU: 47,062 contexts, 21 M weights, and the squeezed model
+  agrees with its chain on the top token 99.3% of the time. Hegel (a
+  hundred times) builds in 5 minutes: 207,974 contexts, 94 M weights.
 - **How close is "pretty close"?** Both the pruning sweep and the rank sweep
   show cost rising steadily with no knee, so it is a choice and not a
   discovery. On held-out text the current defaults cost 0.013 nats
   (pruning) and nothing measurable (squeeze).
 - **Vocabulary size and context length.** Both drive table size. 512 and 3
-  work; nothing else has been tried.
+  work. Context 4 to 6 improves the chain under Kneser-Ney but has not been
+  compiled; one idea is a single block applied in a loop, one pass per
+  token of context.
 
 Settled: credit assignment under backoff (dropped), the floor for unseen
 tokens (uniform mixing at 1e-4), how to squeeze the output side (weighted

@@ -24,23 +24,23 @@ closely like the chain, not whether it beats a trained model.
 
 ## Status
 
-Two builds run end to end on `../samples/corpus20.txt`, on a Witten-Bell
-smoothed chain. A random 10% of the text is held out: 49,416 training
-tokens, 5,540 held-out tokens, V = 512, context 3, prune threshold 0.5,
-17,812 contexts kept of 31,873. Fidelity is the transformer against the
-chain it was compiled from.
+Two builds run end to end on `../samples/corpus20.txt`, on a Kneser-Ney
+smoothed chain (discount 0.8). A random 10% of the text is held out: 49,416
+training tokens, 5,540 held-out tokens, V = 512, context 3, prune threshold
+0.5, 11,393 contexts kept of 31,873. Fidelity is the transformer against
+the chain it was compiled from.
 
 | | wide (`corpus20`) | squeezed (`corpus20_squeezed`) |
 |---|---|---|
 | slots / logit region | one-hot 512 / exact 512 | random 32-dim / 128-dim code |
-| `d_model`, `d_ff` | 2048, 17,812 | 224, 17,812 |
-| weights | 79 M (9.2 M nonzero) | 8.3 M (3.8 M nonzero) |
-| training text: mean KL (nats) | below 1e-6 | 0.012 |
-| training text: top-1 agreement | 100% | 99.0% |
-| training text: NLL (chain 0.884) | 0.884 | 0.897 |
-| held-out: mean KL (nats) | below 1e-6 | 0.012 |
-| held-out: top-1 agreement | 100% | 98.5% |
-| held-out: NLL (chain 2.662) | 2.662 | 2.620 |
+| `d_model`, `d_ff` | 2048, 11,393 | 224, 11,393 |
+| weights | 53 M (5.9 M nonzero) | 5.4 M (2.5 M nonzero) |
+| training text: mean KL (nats) | below 1e-6 | 0.013 |
+| training text: top-1 agreement | 100% | 99.5% |
+| training text: NLL (chain 1.345) | 1.345 | 1.376 |
+| held-out: mean KL (nats) | below 1e-6 | 0.013 |
+| held-out: top-1 agreement | 100% | 99.4% |
+| held-out: NLL (chain 2.529) | 2.529 | 2.518 |
 
 The chain as a language model, held-out NLL in nats per token, mean over 5
 random splits with the range in brackets:
@@ -49,10 +49,12 @@ random splits with the range in brackets:
 |---|---|---|
 | uniform | 6.24 | |
 | unigram | 5.32 | |
-| chain, 1 token of context | 3.45 [3.37, 3.51] | 17.3% |
+| chain, 1 token of context | 3.43 [3.35, 3.50] | 17.3% |
 | hard backoff, context 3 (`smoothing = "none"`) | 5.29 [4.65, 5.88] | 48.6% |
-| smoothed, context 3, unpruned | 2.45 [2.21, 2.66] | 48.8% |
-| smoothed, context 3, as configured | 2.47 [2.23, 2.66] | 47.7% |
+| Witten-Bell, context 3, unpruned | 2.45 [2.21, 2.66] | 48.8% |
+| Witten-Bell, context 3, prune 0.5 (17,915 contexts) | 2.47 [2.23, 2.66] | 47.7% |
+| Kneser-Ney, context 3, unpruned | 2.31 [2.12, 2.48] | 48.6% |
+| Kneser-Ney, context 3, as configured (11,370 contexts) | 2.37 [2.20, 2.53] | 46.0% |
 
 `hegel_generate.py` continues a source string with either build, compiled
 on the whole corpus.
@@ -62,11 +64,31 @@ times the text) and on `resources/hegel.txt` (a hundred times); see "Moby
 Dick compile" and "Hegel build" below. The Hegel weights are saved and can
 be used without recompiling.
 
+Kneser-Ney replaced Witten-Bell in all four configs: on every corpus it
+scores better held out with about half the contexts, and the squeezed
+transformer follows it at least as closely. It also makes context 4 and
+longer pay, which Witten-Bell did not (see "Smoothing for longer context");
+context 3 is still what ships.
+
+Next, agreed with the user (2026-11-27), in order:
+
+1. Context 4 on the chain: check `build_chain` fits on Hegel
+   (`just cc-timed ctx4 just cc-sweep hegel max_context 4`), then how many
+   contexts pruning keeps and whether rank 128 still follows the rows
+   (`just cc-squeeze`). The compiler already handles any context length
+   with one head per extra token.
+2. The looped block ("Looped block" below): one block applied once per
+   token of context, on the wide build first. The user wants longer
+   context and finds the looped architecture appealing in itself.
+
+Open and unexamined: corpus20's prune threshold under Kneser-Ney (0.2
+against the shipped 0.5), a discount per count, and the full
+`just compile hegel` check.
+
 Two extensions were measured as scratch scripts and not adopted: structured
-token vectors and a wide-window head (sections below). Neither moves
-held-out NLL by more than a few hundredths of a nat. Dividing the logits by
-a temperature of 1.2 gains more than either (see "Wide-window head") and is
-the cheapest candidate next step; nothing is chosen yet.
+token vectors and a wide-window head (sections below). Both were measured
+on the Witten-Bell chain, as was the temperature 1.2 result; none has been
+rechecked under Kneser-Ney.
 
 ## Files and commands
 
@@ -76,7 +98,7 @@ hegel_build.py          compile on the whole corpus and save the weights
 hegel_generate.py       source string in, continuation out; or interactive
 resources/corpus20.toml           the exact wide build
 resources/corpus20_squeezed.toml  32-dim slots, 128-dim logit code
-resources/moby_dick.toml          the squeezed build on Moby Dick (about 8 min)
+resources/moby_dick.toml          the squeezed build on Moby Dick (about 3 min)
 resources/hegel.toml              the squeezed build on resources/hegel.txt
 resources/hegel.txt               13 MB of Hegel in English; not in git
 compiled/                         saved weights; not in git
@@ -101,15 +123,15 @@ runs/                   logs of timed runs (just cc-timed); not in git
 cd hegel
 just compile                         # compile + verify corpus20 (wide)
 just compile corpus20_squeezed       # the squeezed build
-just compile moby_dick               # squeezed, Moby Dick, about 8 min
+just compile moby_dick               # squeezed, Moby Dick, about 3 min
 just run "source string"             # continue a string (wide build)
 just run "source string" corpus20_squeezed
 just run                             # interactive; empty line quits
-just build hegel                     # whole corpus, save compiled/hegel.pt, 7 min
+just build hegel                     # whole corpus, save compiled/hegel.pt, 5 min
 just chat hegel                      # interactive, from the saved weights
 uv run python hegel_compile.py resources/corpus20_squeezed.toml
 uv run python hegel_generate.py resources/corpus20.toml "source string"
-uv run pytest tests        # 105 tests, about 15 s
+uv run pytest tests        # 111 tests, about 15 s
 just cc-check              # black, isort, flake8, mypy, pytest; changes nothing
 just cc-fmt                # black and isort, rewriting files
 ```
@@ -119,7 +141,7 @@ Run from `hegel/`: scripts and tests import `src.*` relative to it.
 The `cc-` recipes script what kept being retyped: `cc-check`, `cc-fmt`,
 `cc-timed` and `cc-status` (long runs with a log, time and peak memory),
 `cc-stats` (size up a corpus), `cc-sweep` and `cc-squeeze` (one setting,
-several values), `cc-context` (context lengths past 3), `cc-throughput`, `cc-py` (run a scratch script),
+several values), `cc-context` and `cc-smoothing` (context lengths past 3), `cc-throughput`, `cc-py` (run a scratch script),
 `cc-commit` (stage all, commit from a message file, push). The
 `hegel-lab` skill says when to use each. Use them rather than typing the
 commands out; a measurement run twice becomes a script there with a recipe.
@@ -173,13 +195,22 @@ editing the text.
   as mean and range, because one split of this corpus swings by more than a
   nat. The transformer is compiled and checked on the first split only.
 - **Longest-match backoff, smoothed.** The longest kept context that matches
-  predicts alone. With `smoothing = "witten_bell"` (the shipped setting) what
-  it predicts is its own relative frequencies mixed with the distribution of
-  the context one token shorter, recursively down to the floored unigram.
-  Its own share is n / (n + t) for n occurrences and t distinct
-  continuations. The mix always uses the next context down, whether or not
-  pruning keeps it. `smoothing = "none"` is hard backoff: each context's own
-  frequencies and the floor.
+  predicts alone. With `smoothing = "kneser_ney"` (the shipped setting) a
+  context takes `discount` off each of its counts and gives the freed mass,
+  discount * t / n for n counted and t distinct continuations, to the
+  distribution of the context one token shorter, recursively down to the
+  floored unigram. Contexts of full length count occurrences. Shorter ones
+  count, for each next token, how many different tokens preceded the
+  context when it followed, so a continuation that only ever comes after
+  one longer context is not credited to the shorter one again. The mix
+  always uses the next context down, whether or not pruning keeps it.
+  `smoothing = "witten_bell"` mixes plain relative frequencies with own
+  share n / (n + t). `smoothing = "none"` is hard backoff: each context's
+  own frequencies and the floor.
+- **Discount.** 0.8 on corpus20, 0.9 on Moby Dick and Hegel, picked on
+  held-out text. A larger discount also prunes harder at the same
+  threshold. One discount for every count; a discount per count (modified
+  Kneser-Ney) is not tried.
 - **Sampling temperature.** `temperature` (0.8 shipped) applies to samples
   and generation only, never to fidelity or NLL numbers. The smoothed chain
   gives real probability to off-script tokens, and at temperature 1 its
@@ -244,22 +275,40 @@ there is none.
   is taken against the longest kept proper suffix (tested with pruning).
 - Sizes: `d_ff` = kept contexts, heads = n - 1, `d_head` = V.
 
-### Pruning (measured, smoothed chain, mean of 5 splits)
+### Pruning (measured, mean of 5 splits)
+
+Kneser-Ney, discount 0.8 (`just cc-sweep corpus20 prune_threshold ...`):
+
+| threshold (nats) | contexts kept | held-out NLL | held-out top-1 |
+|---|---|---|---|
+| 0 | 32,139 | 2.309 | 48.6% |
+| 0.1 | 21,017 | 2.325 | 48.0% |
+| 0.2 | 16,649 | 2.339 | 47.3% |
+| 0.5 (shipped) | 11,370 | 2.369 | 46.0% |
+| 1 | 8,355 | 2.405 | 44.9% |
+
+- Pruning costs more held out than it did under Witten-Bell (0.06 nats at
+  0.5 against 0.013), and keeps far fewer contexts at the same threshold.
+  On split 0 the training text goes from NLL 1.035 unpruned to 1.345, with
+  the top token changed at 14% of positions. Threshold 0.2 gives about the
+  old model size and 2.339; 0.5 stays for now, unexamined.
+- On the larger corpora pruning is nearly free: Moby Dick 2.879 unpruned,
+  2.900 at 0.5; Hegel 2.341 and 2.347.
+- By discount at threshold 0.5: 0.6 gives 2.352 (16,506 contexts), 0.7
+  2.343 (14,208), 0.8 2.369 (11,370), 0.9 2.435 (8,433). Unpruned, 0.7 and
+  0.8 tie at 2.31.
+
+Witten-Bell, for the record:
 
 | threshold (nats) | contexts kept | held-out NLL | held-out top-1 | training NLL |
 |---|---|---|---|---|
 | 0 | 32,139 | 2.453 | 48.8% | 0.745 |
-| 0.2 | 23,922 | 2.457 | 48.8% | 0.789 |
 | 0.5 | 17,915 | 2.466 | 47.7% | 0.894 |
-| 1 | 12,339 | 2.482 | 46.1% | 1.082 |
 | 2 | 7,774 | 2.516 | 43.7% | 1.337 |
-| 4 | 4,190 | 2.587 | 40.6% | 1.681 |
 | 8 | 2,397 | 2.691 | 37.0% | 1.998 |
 
-- Pruning barely moves held-out NLL: a quarter of the contexts (threshold 2)
-  costs 0.06 nats. It costs the training text much more, which is what
-  samples are judged by. 0.5 is the shipped compromise.
-- Context 4 does not help (2.46 at best); context 2 gives 2.55.
+- Under Witten-Bell context 4 did not help (2.46 at best); context 2 gave
+  2.55.
 - Under hard backoff the picture was different. In-sample, pruning only
   cost (threshold 0.5: KL 0.010 against the unpruned chain; 2: 0.21; 8:
   0.98, no knee). Held out, pruning helped, because it removed overconfident
@@ -294,10 +343,12 @@ weighted by how often they predict, plus 1. Neurons write code deltas
 against their parent exactly as in the wide build, and telescoping still
 holds because it is linear.
 
-Smoothed chain, full model on split 0 (slots 32, tau 0.7, 4 rounds):
-rank 128 gives training KL 0.012 and 99.0% top-1, held-out KL 0.012 and
-98.5%. From the scratch runs on the factoring alone: rank 64 gives KL 0.076
-and 97.6%, rank 192 about 0.005. Factoring takes about 20 s at rank 128.
+Kneser-Ney chain, full model on split 0 (slots 32, tau 0.7, 4 rounds):
+rank 128 gives training KL 0.013 and 99.5% top-1, held-out KL 0.013 and
+99.4%. Under Witten-Bell it was 0.012 with 99.0% and 98.5%; from the
+scratch runs on that factoring alone, rank 64 gave KL 0.076 and 97.6%,
+rank 192 about 0.005. The table below is also from Witten-Bell ("smoothed")
+and hard backoff.
 
 What was tried on the way, all at rank 128 (mean KL in nats; top-1):
 
@@ -432,24 +483,27 @@ Nothing in `src/` changed.
 
 ### Moby Dick compile (measured, `moby_dick.toml`)
 
-Squeezed build, V = 512, context 3, prune 0.5, split 0: 512,011 training
-and 57,072 held-out tokens; 135,713 contexts kept of 196,170 (pruning costs
-KL 0.028 against the unpruned chain on the training text). `d_model` 224,
-`d_ff` 135,713, 61 M weights (30 M nonzero). The whole run takes 8 min 25 s
-on 24 CPU threads, with a scratch job running beside it.
+Squeezed build, V = 512, context 3, Kneser-Ney discount 0.9, prune 0.5,
+split 0: 512,011 training and 57,072 held-out tokens; 47,062 contexts kept
+of 196,170 (pruning costs KL 0.027 against the unpruned chain on the
+training text, NLL 1.905 to 2.236). `d_model` 224, `d_ff` 47,062, 21 M
+weights (10 M nonzero). The whole run takes 3 min 20 s on 24 CPU threads
+and peaks at 3.8 GB.
 
 | | training text | held-out |
 |---|---|---|
-| mean KL against the chain (nats) | 0.024 | 0.023 |
-| top-1 agreement | 98.7% | 98.9% |
-| NLL: chain / transformer | 1.476 / 1.498 | 3.060 / 3.000 |
+| mean KL against the chain (nats) | 0.016 | 0.015 |
+| top-1 agreement | 99.3% | 99.3% |
+| NLL: chain / transformer | 2.236 / 2.280 | 2.893 / 2.878 |
 
-- Rank 128 holds up with 7.6 times the contexts: KL doubles from corpus20's
-  0.012 and top-1 agreement is unchanged.
-- Held-out, mean of 3 splits: unigram 5.24, 1-token chain 3.76 (13.9%),
-  unpruned 3.069 (33.9%), as configured 3.063 (33.7%). Splits differ by
-  0.03 nats here, against more than a nat on corpus20. Pruning slightly
-  helps held out.
+- Held-out, mean of 3 splits: unigram 5.24, 1-token chain 3.75 (13.9%),
+  unpruned 2.879 (34.1%), as configured 2.900 (33.6%). Splits differ by
+  0.03 nats here, against more than a nat on corpus20.
+- Under Witten-Bell the same config kept 135,713 contexts (61 M weights,
+  8 min 25 s) and scored 3.063 held out, with KL 0.024 and 98.7% top-1
+  against its chain. Kneser-Ney is a third the size, 0.16 nats better and
+  closer to its chain.
+- Discount 0.8 keeps 66,756 contexts for 2.895; 0.9 was taken for size.
 - Coupled samples leave the chain's within about ten tokens (2 to 11 of 80
   identical), far sooner than on corpus20, since one differing draw is
   enough. Both read as local Moby Dick with no thread across a sentence.
@@ -461,34 +515,37 @@ on 24 CPU threads, with a scratch job running beside it.
 works run together, from OCR: footnote debris and German fragments are in
 it and show up in samples. Same settings as Moby Dick.
 
-`just build hegel`, whole corpus: 5,682,998 tokens, 391,236 contexts kept,
-`d_model` 224, `d_ff` 391,236, 176 M weights (87 M nonzero). It takes 7
-minutes on 24 CPU threads and peaks at 9.6 GB of memory.
-`compiled/hegel.pt` is 704 MB. `just chat hegel` is ready in about 20 s,
-and an 80-token answer takes a few seconds.
+Kneser-Ney, discount 0.9.
 
-- A hundred times corpus20's text gives only 22 times the contexts.
-- `just compile hegel` (the held-out check) takes 2 h 20 min and peaks at
-  about 14 GB, because the model runs over all the training text at 1 to
-  2 s per 1000 tokens. Checking a sample of the training text would fix
-  that; not built.
+`just build hegel`, whole corpus: 5,682,998 tokens, 207,974 contexts kept,
+`d_model` 224, `d_ff` 207,974, 94 M weights (46 M nonzero). It takes 5
+minutes on 24 CPU threads and peaks at 6.6 GB of memory.
+`compiled/hegel.pt` is 375 MB. A forward pass over 1024 tokens takes
+about 0.9 s.
 
-`just compile hegel`, split 0: 5,115,014 training and 568,058 held-out
-tokens; 372,721 contexts kept of 521,923 (pruning costs KL 0.006 against
-the unpruned chain on the training text); `d_ff` 372,721, 168 M weights.
+Split 0 (5,115,014 training and 568,058 held-out tokens): 195,534 contexts
+kept of 521,923. Chain held out: unigram 5.26, 1-token chain 3.49 (16.6%),
+unpruned 2.341, as configured 2.347 (43.1%). Prune 0.2 keeps 243,271 for
+2.345; prune 1 keeps 165,551 for 2.349.
+
+Transformer against its chain, from `just cc-squeeze hegel logit_dim 128`
+(the first 20,000 positions of each text, 5 min, peak 6.2 GB):
 
 | | training text | held-out |
 |---|---|---|
-| mean KL against the chain (nats) | 0.033 | 0.033 |
-| top-1 agreement | 98.9% | 98.9% |
-| NLL: chain / transformer | 1.819 / 1.858 | 2.426 / 2.389 |
+| mean KL against the chain (nats) | 0.017 | 0.017 |
+| top-1 agreement | 99.5% | 99.4% |
+| NLL: chain / transformer | 2.061 / 2.098 | 2.313 / 2.303 |
 
-- Rank 128 still holds with 21 times corpus20's contexts: KL 0.033
-  (corpus20 0.012, Moby Dick 0.024), top-1 agreement unchanged.
-- Held-out, one split: unigram 5.26, 1-token chain 3.49 (16.6%), unpruned
-  2.428 (43.1%), as configured 2.426 (43.1%). Hegel is much more
-  predictable than Moby Dick (3.06, 33.7%) at the same settings.
-- Coupled samples leave the chain's within 3 to 7 tokens of 80.
+- The full check, `just compile hegel`, has not been rerun under
+  Kneser-Ney. Under Witten-Bell it took 2 h 20 min and peaked at about
+  14 GB, because the model runs over all the training text.
+- Under Witten-Bell: 372,721 contexts on the split (391,236 on the whole
+  corpus, 176 M weights, 704 MB, 7 min, 9.6 GB), chain 2.426 held out,
+  transformer KL 0.033 and 98.9% top-1 over all positions. Kneser-Ney is
+  half the size, 0.08 nats better and closer to its chain.
+- Hegel is much more predictable than Moby Dick (2.90, 33.6%) at the same
+  settings.
 
 ### Longer context on Hegel (measured, `just cc-context hegel 6`)
 
@@ -511,14 +568,70 @@ numbers at context 1 and 3 exactly.
   That is calibration, not information: Witten-Bell gives a context seen
   once with one continuation half the say, and most long contexts are
   seen once.
-- So context 3 is the best this smoothing can use, and longer context
-  needs a better-calibrated chain first (more weight to shorter contexts
-  for rarely seen ones; not tried).
+- So context 3 is the best Witten-Bell can use. Better smoothing fixes
+  it; see the next section.
 - Past context 3 the contexts multiply faster than they repeat: length 4
   has 3.2 times the distinct contexts of length 3 and 2.0 times those
   seen twice.
-- `src.chain.build_chain` keeps a 4 KB row for every context seen, so it
-  cannot build context 4 on Hegel in memory (1.5 M contexts).
+
+### Smoothing for longer context (measured, `just cc-smoothing hegel 6`)
+
+Same split and scorer; held-out NLL with top-1 accuracy in brackets, best
+setting tried of each kind. `wb k` is Witten-Bell with own share
+n / (n + k t). `ad D` is interpolated absolute discounting on raw counts.
+`kn D` is Kneser-Ney: the same, with lower levels counting distinct left
+neighbours instead of occurrences.
+
+| smoothing | context 3 | 4 | 5 | 6 |
+|---|---|---|---|---|
+| wb 1 (shipped) | 2.428 (43.1%) | 2.483 (44.8%) | 2.575 (45.4%) | 2.657 (45.6%) |
+| wb 3 | 2.363 (43.0%) | 2.324 (45.0%) | 2.329 (45.8%) | 2.345 (46.1%) |
+| wb 8 | 2.389 (42.3%) | 2.312 (44.5%) | 2.283 (45.6%) | 2.272 (46.1%) |
+| ad 0.9 | 2.423 (43.1%) | 2.424 (45.0%) | 2.447 (45.8%) | 2.468 (46.2%) |
+| kn 0.8 | 2.343 (43.2%) | 2.298 (45.0%) | 2.292 (45.8%) | 2.297 (46.1%) |
+| kn 0.9 | 2.341 (43.2%) | 2.285 (45.1%) | 2.266 (46.0%) | 2.259 (46.4%) |
+
+- **Kneser-Ney makes longer context pay**: 2.259 at context 6 against the
+  shipped 2.428, and 3.3 points of top-1. Most of it comes by context 4
+  (2.285); 5 and 6 add 0.02 and 0.01.
+- **It also helps at context 3 with no more contexts**: 2.341, a gain of
+  0.087 nats, more than temperature 1.2 gave anywhere.
+- Scaling Witten-Bell's backoff share gets most of the way, but the best
+  k grows with the context (3 at context 3, 8 at context 6).
+- On corpus20 split 0 the same holds: kn 0.8 gives 2.477 at context 3 and
+  2.446 at context 4, against 2.659 shipped.
+- D = 0.9 is the edge of the grid and still the best; one discount for
+  every count is crude, and a discount per count (modified Kneser-Ney)
+  was not tried. The settings were picked on the held-out text.
+- Adopted at context 3 (`smoothing = "kneser_ney"` in `src/chain.py`,
+  which reproduces this scorer's numbers exactly). Context 4 and longer
+  are not built. Unknown there: how many contexts pruning keeps (1.5 M
+  distinct at length 4), and whether rank 128 still fits the rows.
+  `build_chain` holds a 4 KB row for every context shorter than
+  `max_context` and for every kept one, so context 4 on Hegel needs at
+  least 2 GB for the first and is untried.
+
+### Looped block (design, not built)
+
+One block with shared weights, applied n - 1 times for context n, with two
+heads whatever n is. The current block cannot simply be repeated: its
+heads add tokens into slots and its neurons add to the logits, so a second
+pass doubles both.
+
+- Head A looks one token back and copies that position's slots shifted by
+  one: its slot 0 into my slot 1, its slot 1 into my slot 2, and so on.
+- Head B attends to the position itself and subtracts its old slots 1 and
+  up and its old logit region, so each pass sets them instead of adding.
+- After pass t, slots 1 to t are right and stay right. The context
+  neurons rewrite the logits from the slots on every pass, so the last
+  pass equals the chain. No step counter is needed.
+- Check it on the wide build, where the match should be exact. In the
+  squeezed build the slots are approximate and the error is fed back each
+  pass; that is the risk.
+- It saves heads, not neurons: `d_ff` is still one per kept context, and
+  each pass costs a full forward pass. A block with distinct weights per
+  layer would be the easier compile; the loop's point is depth chosen at
+  run time.
 
 ### Held-out behaviour (measured)
 

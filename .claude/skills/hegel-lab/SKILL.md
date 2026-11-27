@@ -24,6 +24,7 @@ the script or the recipe here; do not work around it inline.
 | `just cc-stats <config>` | Tokens, distinct contexts by length, contexts kept, rough weight count. No model built. |
 | `just cc-sweep <config> <setting> <values...>` | Held-out NLL and top-1 of the chain for each value, over the config's splits. No model built. |
 | `just cc-context <config> [max]` | Held-out NLL and top-1 of the unpruned chain at context lengths 1 to max, plus distinct contexts per length. Lean on memory, so it works past context 3 on Hegel (26 s for 6). Needs vocabulary 512. |
+| `just cc-smoothing <config> [max]` | The same table under several smoothings: Witten-Bell with a scaled backoff share, absolute discounting, Kneser-Ney. 3 min on Hegel for 6. Edit the `variants` list in `smoothing.py` to change the grid. |
 | `just cc-squeeze <config> <setting> <values...>` | Compiles the transformer for each value on one fixed chain; fidelity on a sample of positions. |
 | `just cc-throughput <config> [tokens]` | Load time and forward-pass time of saved weights. |
 | `just cc-py <script> [args...]` | Runs a scratch script with `src.*` and `lab` importable. |
@@ -51,15 +52,15 @@ just cc-timed prune-md just cc-sweep moby_dick prune_threshold 0.2 0.5 1 2
   memory is the largest single process, which is the Python run.
 - Logs live in `hegel/runs/`, which is not in git. Reusing a name
   overwrites its log.
-- Known durations are in `hegel/CLAUDE.md` (Hegel build 7 min; the Hegel
-  held-out check 2 h 20 min). Give the user an estimate from those before
+- Known durations are in `hegel/CLAUDE.md` (Hegel build 5 min; the full Hegel
+  held-out check took 2 h 20 min under the old smoothing). Give the user an estimate from those before
   starting, and say so if a run will take more than a few minutes.
 
 ## Sizing a new corpus
 
 1. Add `resources/<name>.toml` (copy `moby_dick.toml`).
 2. `just cc-stats <name>`. `d_ff` is the number of contexts kept; memory
-   and time scale with it. Hegel (391 k contexts) peaks at 9.6 GB to build.
+   and time scale with it. Hegel (208 k contexts) peaks at 6.6 GB to build.
 3. `just cc-squeeze <name> logit_dim 128` gives fidelity on 20,000 positions
    in minutes; the full `just compile <name>` runs the model over all the
    training text (1 to 2 s per 1000 tokens at Hegel's size).
@@ -67,8 +68,9 @@ just cc-timed prune-md just cc-sweep moby_dick prune_threshold 0.2 0.5 1 2
 ## Sweeps
 
 - `cc-sweep` is for settings that change the chain: `prune_threshold`,
-  `max_context` (up to 3 on Hegel; `src.chain` holds 4 KB per context
-  seen, so use `cc-context` beyond that), `vocab_size`, `smoothing`, `floor`. To see the spread
+  `max_context` (3 on Hegel is known to fit, peak 8.4 GB; `src.chain`
+  holds 4 KB per context, so use `cc-context` or `cc-smoothing` beyond
+  that), `discount`, `vocab_size`, `smoothing`, `floor`. To see the spread
   across splits on a small corpus, use a config with `holdout_seeds` above 1.
 - `cc-squeeze` is for settings that change only the compile: `slot_dim`,
   `logit_dim`, `match_threshold`, `low_weight`, `decoder_rounds`,

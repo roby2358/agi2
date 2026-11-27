@@ -66,6 +66,10 @@ cc-squeeze config setting +values:
 cc-context config max="5":
     @PYTHONPATH=".:{{ lab }}" uv run python "{{ lab }}/long_context.py" "$@"
 
+# The same under several smoothings (Witten-Bell scaled, absolute discounting, Kneser-Ney)
+cc-smoothing config max="5":
+    @PYTHONPATH=".:{{ lab }}" uv run python "{{ lab }}/smoothing.py" "$@"
+
 # Load time and forward-pass time of saved weights
 cc-throughput config="hegel" tokens="1024":
     @PYTHONPATH=. uv run python "{{ lab }}/throughput.py" "$@"

@@ -76,6 +76,7 @@ def main(argv: List[str]) -> int:
             config.max_context,
             config.floor,
             smoothing=config.smoothing,
+            discount=config.discount,
         )
         _report(
             f"Pruning cost: pruned chain against the unpruned chain "

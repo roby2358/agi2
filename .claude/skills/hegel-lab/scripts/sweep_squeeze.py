@@ -62,6 +62,7 @@ def main(argv: List[str]) -> int:
         base.floor,
         base.prune_threshold,
         base.smoothing,
+        base.discount,
     )
     train = tokens[:positions] if positions else tokens
     held = held_out[:positions] if positions else held_out

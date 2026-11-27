@@ -6,7 +6,8 @@ corpus = "../samples/moby_dick_pg2701.txt"
 vocab_size = 512
 max_context = 3
 floor = 1e-4
-smoothing = "witten_bell"
+smoothing = "kneser_ney"   # or "witten_bell", or "none": each context's own frequencies only
+discount = 0.9           # what kneser_ney takes off every count
 prune_threshold = 0.5
 
 holdout_fraction = 0.1

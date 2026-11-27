@@ -118,6 +118,58 @@ class TestBuildChain:
         assert np.exp(hard.next_log_probs([3, 1]))[2] < 1e-4
         assert np.exp(soft.next_log_probs([3, 1]))[2] > 0.2
 
+    def test_kneser_ney_rows_are_distributions(self) -> None:
+        for threshold in (0.0, 0.5):
+            chain = build_chain(
+                count_contexts(STREAM, 3),
+                4,
+                3,
+                prune_threshold=threshold,
+                smoothing="kneser_ney",
+            )
+            assert np.allclose(np.exp(chain.log_probs).sum(axis=1), 1.0)
+
+    def test_kneser_ney_discount_must_be_a_fraction(self) -> None:
+        with pytest.raises(ValueError):
+            build_chain(
+                count_contexts(STREAM, 2), 4, 2, smoothing="kneser_ney", discount=1.0
+            )
+
+    def test_kneser_ney_by_hand(self) -> None:
+        # Pairs seen: 0 1 (x3), 1 2 (x3), 2 0 (x2), 2 3, 3 1, 1 0.
+        tokens = [0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 1, 0]
+        floor, d = 1e-3, 0.5
+        chain = build_chain(
+            count_contexts(tokens, 2), 4, 2, floor, smoothing="kneser_ney", discount=d
+        )
+        # The unigram row counts distinct predecessors: 0 follows {2, 1},
+        # 1 follows {0, 3}, 2 follows {1}, 3 follows {2}.
+        lefts = np.array([2.0, 2.0, 1.0, 1.0])
+        root = (1 - floor) * lefts / lefts.sum() + floor / 4
+        assert np.exp(chain.next_log_probs([])) == pytest.approx(root)
+        # "1" is shorter than max_context, so it also counts predecessors:
+        # 2 follows "1" after {0}, 0 follows "1" after {3}. Two counts of 1.
+        one = np.exp(chain.next_log_probs([1]))
+        expected_one = (d * 2 / 2) * root
+        expected_one[[2, 0]] += (1 - d) / 2
+        assert one == pytest.approx(expected_one)
+        # "0 1" is full length and uses occurrences: 2 follows three times.
+        two = np.exp(chain.next_log_probs([0, 1]))
+        expected_two = (d * 1 / 3) * expected_one
+        expected_two[2] += (3 - d) / 3
+        assert two == pytest.approx(expected_two)
+
+    def test_kneser_ney_trusts_a_context_seen_once_less(self) -> None:
+        tokens = [0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 1, 0]
+        counts = count_contexts(tokens, 2)
+        bell = build_chain(counts, 4, 2, smoothing="witten_bell")
+        ney = build_chain(counts, 4, 2, smoothing="kneser_ney", discount=0.8)
+        # "3 1" was seen once, followed by 0.
+        assert (
+            np.exp(ney.next_log_probs([3, 1]))[0]
+            < np.exp(bell.next_log_probs([3, 1]))[0]
+        )
+
     def test_witten_bell_uses_pruned_contexts_in_the_mix(self) -> None:
         rng = np.random.default_rng(1)
         tokens = [int(t) for t in rng.integers(4, size=300)]

@@ -27,8 +27,11 @@ class HegelConfig:
         holdout_seeds: How many different random splits to score the chain
             on (seeds holdout_seed, holdout_seed + 1, ...). The transformer
             is compiled and checked on the first only.
-        smoothing: "none" (each context's own frequencies) or "witten_bell"
-            (mixed with the next shorter context's distribution).
+        smoothing: "none" (each context's own frequencies), "witten_bell"
+            (mixed with the next shorter context's distribution) or
+            "kneser_ney" (a discount off every count goes to the shorter
+            context, which counts distinct predecessors).
+        discount: What "kneser_ney" takes off every count, between 0 and 1.
         prune_threshold: Minimum gain in nats (occurrences times KL from the
             backoff parent) for a context to be kept. 0 keeps every context.
         slot_dim: Width of each token vector in the residual stream; 0 means
@@ -60,6 +63,7 @@ class HegelConfig:
     holdout_seed: int = 0
     holdout_seeds: int = 1
     smoothing: str = "none"
+    discount: float = 0.8
     prune_threshold: float = 0.0
     slot_dim: int = 0
     logit_dim: int = 0
@@ -90,6 +94,8 @@ class HegelConfig:
             raise ValueError("holdout_seeds must be at least 1")
         if self.smoothing not in SMOOTHINGS:
             raise ValueError(f"smoothing must be one of {SMOOTHINGS}")
+        if not 0.0 < self.discount < 1.0:
+            raise ValueError("discount must be strictly between 0 and 1")
         if self.prune_threshold < 0.0:
             raise ValueError("prune_threshold must not be negative")
         if self.slot_dim < 0 or self.logit_dim < 0:

@@ -51,6 +51,7 @@ def main(argv: List[str]) -> int:
         config.floor,
         config.prune_threshold,
         config.smoothing,
+        config.discount,
     )
     kept = chain.kept_by_length()
     print(f"Contexts (prune threshold {config.prune_threshold}):")

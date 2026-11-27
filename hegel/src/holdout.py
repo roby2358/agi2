@@ -57,7 +57,13 @@ def score_split(config: HegelConfig, text: str) -> HoldoutScore:
             else {c: n for c, n in counts.items() if len(c) <= max_context}
         )
         chain = build_chain(
-            used, vocab, max_context, config.floor, threshold, config.smoothing
+            used,
+            vocab,
+            max_context,
+            config.floor,
+            threshold,
+            config.smoothing,
+            config.discount,
         )
         nll, accuracy = chain_score(chain, held_out)
         return nll, accuracy, len(chain.contexts) - 1

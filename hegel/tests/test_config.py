@@ -27,6 +27,8 @@ class TestHegelConfig:
             {"holdout_block": 0},
             {"holdout_seeds": 0},
             {"smoothing": "laplace"},
+            {"discount": 0.0},
+            {"discount": 1.0},
             {"slot_dim": -1},
             {"logit_dim": -1},
             {"match_threshold": 1.0},

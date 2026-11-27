@@ -19,7 +19,7 @@ Counts = Dict[Context, "Counter[int]"]
 
 ROOT: Context = ()
 
-SMOOTHINGS = ("none", "witten_bell")
+SMOOTHINGS = ("none", "witten_bell", "kneser_ney")
 
 
 def count_contexts(tokens: Sequence[int], max_context: int) -> Counts:
@@ -122,6 +122,21 @@ class Chain:
         return kept
 
 
+def _left_neighbour_counts(counts: Counts) -> Counts:
+    """
+    For every context that has a longer one in counts, and every next token:
+    how many different tokens were seen in front of the context when that
+    next token followed.
+    """
+    lefts: Counts = defaultdict(Counter)
+    for context, nexts in counts.items():
+        if context:
+            shorter = lefts[context[1:]]
+            for token in nexts:
+                shorter[token] += 1
+    return dict(lefts)
+
+
 def build_chain(
     counts: Counts,
     vocab_size: int,
@@ -129,6 +144,7 @@ def build_chain(
     floor: float = 1e-4,
     prune_threshold: float = 0.0,
     smoothing: str = "none",
+    discount: float = 0.8,
 ) -> Chain:
     """
     Turn raw counts into a backoff chain, pruning contexts that add little.
@@ -149,6 +165,14 @@ def build_chain(
       occurrences and t distinct continuations, so a context seen once with
       one continuation gets half the say. The shorter context here is always
       the next one down, whether or not pruning keeps it.
+    - "kneser_ney": `discount` is taken off every count and the mass freed
+      (discount * t / n) goes to the context one token shorter. Contexts
+      shorter than max_context do not count occurrences: for each next
+      token they count how many different tokens were seen in front of the
+      context when it followed. A token that follows a context after one
+      particular predecessor only then counts once, however often it
+      occurred. A context with no predecessor (the very start of the
+      stream) uses the shorter context's distribution unchanged.
 
     The longest kept match still predicts alone; smoothing only changes what
     it says.
@@ -172,7 +196,15 @@ def build_chain(
     index: Dict[Context, int] = {ROOT: 0}
     # Smoothed probabilities of every context seen, kept or not, because a
     # context mixes with the one a token shorter even when that one is pruned.
+    # Only contexts shorter than max_context are ever mixed into another.
     smoothed: Dict[Context, npt.NDArray[np.float64]] = {ROOT: np.exp(rows[0])}
+    lefts: Counts = {}
+    if smoothing == "kneser_ney":
+        if not 0.0 < discount < 1.0:
+            raise ValueError("discount must be strictly between 0 and 1")
+        lefts = _left_neighbour_counts(counts)
+        rows[0] = _log_distribution(lefts.get(ROOT, counts[ROOT]), vocab_size, floor)
+        smoothed[ROOT] = np.exp(rows[0])
 
     for context in sorted((c for c in counts if c), key=lambda c: (len(c), c)):
         parent = 0
@@ -187,7 +219,24 @@ def build_chain(
             probs = (1.0 - own) * smoothed[context[1:]]
             for token, count in counts[context].items():
                 probs[token] += own * count / seen
-            smoothed[context] = probs
+            if len(context) < max_context:
+                smoothed[context] = probs
+            row = np.log(probs)
+        elif smoothing == "kneser_ney":
+            used = (
+                counts[context]
+                if len(context) == max_context
+                else lefts.get(context, Counter())
+            )
+            total = sum(used.values())
+            if total:
+                probs = (discount * len(used) / total) * smoothed[context[1:]]
+                for token, count in used.items():
+                    probs[token] += max(count - discount, 0.0) / total
+            else:
+                probs = smoothed[context[1:]].copy()
+            if len(context) < max_context:
+                smoothed[context] = probs
             row = np.log(probs)
         else:
             row = _log_distribution(counts[context], vocab_size, floor)

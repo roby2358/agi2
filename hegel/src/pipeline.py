@@ -54,6 +54,7 @@ def compile_from_config(config: HegelConfig) -> Compiled:
         config.floor,
         config.prune_threshold,
         config.smoothing,
+        config.discount,
     )
     return Compiled(
         text_length=len(text),
