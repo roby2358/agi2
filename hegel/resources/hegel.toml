@@ -1,0 +1,32 @@
+# Hegel in English (13 MB, about a hundred times corpus20), squeezed build.
+# The text is resources/hegel.txt, which is not in git.
+# Usage (from hegel/): just build hegel   (save whole-corpus weights)
+#                      just chat hegel    (talk to the saved weights)
+#                      just compile hegel (measure on a held-out split)
+
+corpus = "resources/hegel.txt"
+
+vocab_size = 512
+max_context = 3
+floor = 1e-4
+smoothing = "witten_bell"
+prune_threshold = 0.5
+
+holdout_fraction = 0.1
+holdout_block = 1000
+holdout_seed = 0
+holdout_seeds = 1        # splits of a text this size differ very little
+
+slot_dim = 32            # token vector width; 0 = one-hot
+logit_dim = 128          # logit code width; 0 = full vocabulary, exact
+match_threshold = 0.7    # how near a full match a context neuron must be
+low_weight = 0.003       # what a zero-probability token counts for in the factoring
+decoder_rounds = 4       # alternating least-squares rounds; 0 = random decoder
+code_seed = 0
+
+seed = 0
+sample_count = 4
+sample_tokens = 80
+temperature = 0.8        # for samples and generation; 1 = sample as is
+
+checkpoint = "compiled/hegel.pt"

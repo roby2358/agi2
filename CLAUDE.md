@@ -51,6 +51,8 @@ cd hegel
 just compile                        # compile + verify: hegel_compile.py resources/corpus20.toml
 just compile corpus20_squeezed      # the squeezed build
 just run "What ho"                  # continue a source string; no string = interactive
+just build hegel                    # compile on the whole corpus and save the weights
+just chat hegel                     # interactive, from the saved weights
 ```
 
 Details, tests and lint commands are in `hegel/CLAUDE.md`.

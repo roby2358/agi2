@@ -76,6 +76,11 @@ def split_stream(
     return train, held_out
 
 
+def new_tokenizer(vocab_size: int) -> Any:
+    """An unfitted BPE tokenizer: fit it, or load a saved vocabulary into it."""
+    return _bpe_tokenizer_class()(vocab_size=vocab_size)
+
+
 def tokenize_split(
     text: str,
     vocab_size: int,
@@ -96,7 +101,7 @@ def tokenize_split(
     train, held_out = split_stream(
         normalize(text), holdout_fraction, holdout_block, holdout_seed
     )
-    tokenizer = _bpe_tokenizer_class()(vocab_size=vocab_size)
+    tokenizer = new_tokenizer(vocab_size)
     tokenizer.fit([train])
     return list(tokenizer.encode(train)), list(tokenizer.encode(held_out)), tokenizer
 

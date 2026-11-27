@@ -184,7 +184,8 @@ continuations.
 
 `hegel_generate.py` (or `just run "source string"` from `hegel/`) compiles a model
 from a config and continues a source string; with no string it prompts
-interactively.
+interactively. For a large corpus, `just build hegel` compiles once and saves
+the weights and `just chat hegel` talks to them without recompiling.
 
 ## Held-out evaluation
 

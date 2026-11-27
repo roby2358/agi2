@@ -7,11 +7,9 @@ Usage (from hegel/):
 
 import sys
 import time
-from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-import torch
 from src.chain import Chain, build_chain
 from src.config import load_config
 from src.holdout import score_seeds
@@ -95,10 +93,6 @@ def main(argv: List[str]) -> int:
         f"  weights {model.parameter_count()}, "
         f"of which nonzero {model.nonzero_count()}"
     )
-    if config.checkpoint:
-        Path(config.checkpoint).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), config.checkpoint)
-        print(f"  saved to {config.checkpoint}")
 
     _report(
         "Fidelity: transformer against the chain it was compiled from",

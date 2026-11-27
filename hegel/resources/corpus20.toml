@@ -20,4 +20,4 @@ sample_count = 4
 sample_tokens = 80
 temperature = 0.8        # for samples and generation; 1 = sample as is
 
-# checkpoint = "compiled/corpus20.pt"
+# checkpoint = "compiled/corpus20.pt"   # where `just build` saves weights

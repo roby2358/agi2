@@ -47,7 +47,8 @@ class HegelConfig:
         sample_tokens: Tokens generated per sample.
         temperature: Sampling temperature for samples and generation. Below
             1 favours likely tokens; 1 samples the distribution as it is.
-        checkpoint: Where to save the compiled weights; empty to skip.
+        checkpoint: Where hegel_build.py saves the whole-corpus weights and
+            hegel_generate.py looks for them; empty to always recompile.
     """
 
     corpus: str

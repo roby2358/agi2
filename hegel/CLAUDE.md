@@ -58,7 +58,9 @@ random splits with the range in brackets:
 on the whole corpus.
 
 The squeezed build also compiles on `../samples/moby_dick_pg2701.txt` (ten
-times the text); see "Moby Dick compile" below.
+times the text) and on `resources/hegel.txt` (a hundred times); see "Moby
+Dick compile" and "Hegel build" below. The Hegel weights are saved and can
+be used without recompiling.
 
 Two extensions were measured as scratch scripts and not adopted: structured
 token vectors and a wide-window head (sections below). Neither moves
@@ -70,10 +72,14 @@ the cheapest candidate next step; nothing is chosen yet.
 
 ```
 hegel_compile.py        entry point: tokenize, chain, compile, verify, sample
+hegel_build.py          compile on the whole corpus and save the weights
 hegel_generate.py       source string in, continuation out; or interactive
 resources/corpus20.toml           the exact wide build
 resources/corpus20_squeezed.toml  32-dim slots, 128-dim logit code
 resources/moby_dick.toml          the squeezed build on Moby Dick (about 8 min)
+resources/hegel.toml              the squeezed build on resources/hegel.txt
+resources/hegel.txt               13 MB of Hegel in English; not in git
+compiled/                         saved weights; not in git
 src/config.py           HegelConfig, load_config (TOML, unknown keys rejected)
 src/corpus.py           normalize (one stream), tokenize (BPE from semantic/)
 src/chain.py            count_contexts, build_chain (pruning), Chain (backoff)
@@ -83,9 +89,10 @@ src/compiler.py         compile_chain (wide or squeezed), compile_wide
 src/pipeline.py         compile_from_config: corpus -> tokens -> chain -> model
 src/holdout.py          score the chain on several random held-out splits
 src/verify.py           FidelityMeter, chain/model comparisons, coupled sampling
+src/checkpoint.py       save_weights, load_weights (model + tokenizer in one file)
 src/generation.py       respond: continue a source string
 tests/                  one test file per src module
-justfile                the compile and run recipes
+justfile                the compile, build, chat and run recipes
 ```
 
 ```bash
@@ -96,22 +103,32 @@ just compile moby_dick               # squeezed, Moby Dick, about 8 min
 just run "source string"             # continue a string (wide build)
 just run "source string" corpus20_squeezed
 just run                             # interactive; empty line quits
+just build hegel                     # whole corpus, save compiled/hegel.pt, 7 min
+just chat hegel                      # interactive, from the saved weights
 uv run python hegel_compile.py resources/corpus20_squeezed.toml
 uv run python hegel_generate.py resources/corpus20.toml "source string"
-uv run pytest tests        # 101 tests, about 15 s
-uv run black src tests hegel_compile.py hegel_generate.py
-uv run isort src tests hegel_compile.py hegel_generate.py
+uv run pytest tests        # 105 tests, about 15 s
+uv run black src tests hegel_compile.py hegel_generate.py hegel_build.py
+uv run isort src tests hegel_compile.py hegel_generate.py hegel_build.py
 uv run flake8 --max-line-length 88 --extend-ignore E203 src tests *.py
-uv run mypy src hegel_compile.py hegel_generate.py
+uv run mypy src hegel_compile.py hegel_generate.py hegel_build.py
 ```
 
 Run from `hegel/`: scripts and tests import `src.*` relative to it.
 
-`hegel_generate.py` recompiles from the config on every start (about 15 s
-wide, 40 s squeezed, most of it the output factoring) instead of loading a
-checkpoint, so there is nothing to keep in sync. Interactive mode pays that
-once. It sets `holdout_fraction` to 0, so the model you talk to is built on
-the whole corpus.
+Three scripts, three jobs. `hegel_compile.py` measures: it compiles on the
+training part of a held-out split, checks the transformer against its chain
+and saves nothing. `hegel_build.py` compiles on the whole corpus
+(`holdout_fraction` forced to 0) and saves the model and its tokenizer to
+the config's `checkpoint` path. `hegel_generate.py` loads that file if the
+config names one and it exists, and otherwise compiles on the whole corpus
+itself (about 15 s wide, 40 s squeezed on corpus20), saving nothing. Only
+`hegel.toml` sets `checkpoint`.
+
+The weights file records the settings that decide the weights. If the
+config no longer matches, `hegel_generate.py` says so and recompiles
+instead of using it. It does not notice a changed corpus file: rebuild after
+editing the text.
 
 ## Working rules
 
@@ -429,6 +446,41 @@ on 24 CPU threads, with a scratch job running beside it.
   identical), far sooner than on corpus20, since one differing draw is
   enough. Both read as local Moby Dick with no thread across a sentence.
 - `hegel_generate.py` on this config has not been timed.
+
+### Hegel build (measured, `hegel.toml`)
+
+`resources/hegel.txt` is 13.1 M characters of Hegel in English, several
+works run together, from OCR: footnote debris and German fragments are in
+it and show up in samples. Same settings as Moby Dick.
+
+`just build hegel`, whole corpus: 5,682,998 tokens, 391,236 contexts kept,
+`d_model` 224, `d_ff` 391,236, 176 M weights (87 M nonzero). It takes 7
+minutes on 24 CPU threads and peaks at 9.6 GB of memory.
+`compiled/hegel.pt` is 704 MB. `just chat hegel` is ready in about 20 s,
+and an 80-token answer takes a few seconds.
+
+- A hundred times corpus20's text gives only 22 times the contexts.
+- `just compile hegel` (the held-out check) takes 2 h 20 min and peaks at
+  about 14 GB, because the model runs over all the training text at 1 to
+  2 s per 1000 tokens. Checking a sample of the training text would fix
+  that; not built.
+
+`just compile hegel`, split 0: 5,115,014 training and 568,058 held-out
+tokens; 372,721 contexts kept of 521,923 (pruning costs KL 0.006 against
+the unpruned chain on the training text); `d_ff` 372,721, 168 M weights.
+
+| | training text | held-out |
+|---|---|---|
+| mean KL against the chain (nats) | 0.033 | 0.033 |
+| top-1 agreement | 98.9% | 98.9% |
+| NLL: chain / transformer | 1.819 / 1.858 | 2.426 / 2.389 |
+
+- Rank 128 still holds with 21 times corpus20's contexts: KL 0.033
+  (corpus20 0.012, Moby Dick 0.024), top-1 agreement unchanged.
+- Held-out, one split: unigram 5.26, 1-token chain 3.49 (16.6%), unpruned
+  2.428 (43.1%), as configured 2.426 (43.1%). Hegel is much more
+  predictable than Moby Dick (3.06, 33.7%) at the same settings.
+- Coupled samples leave the chain's within 3 to 7 tokens of 80.
 
 ### Held-out behaviour (measured)
 

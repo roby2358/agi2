@@ -1,5 +1,5 @@
 # Run from hegel/. Config names are TOML basenames in resources/
-# (corpus20, corpus20_squeezed, moby_dick).
+# (corpus20, corpus20_squeezed, moby_dick, hegel).
 
 _default:
     @just --list --unsorted
@@ -7,6 +7,14 @@ _default:
 # Compile a transformer from a Markov chain (no training) and verify it: just compile corpus20_squeezed
 compile config="corpus20":
     uv run python hegel_compile.py resources/{{ config }}.toml
+
+# Compile on the whole corpus and save the weights to the config's checkpoint path: just build hegel
+build config="hegel":
+    uv run python hegel_build.py resources/{{ config }}.toml
+
+# Talk to saved weights interactively (compiles first if there are none): just chat hegel
+chat config="hegel":
+    uv run python hegel_generate.py resources/{{ config }}.toml
 
 # Continue a source string with the compiled transformer; no prompt = interactive
 run prompt="" config="corpus20":
