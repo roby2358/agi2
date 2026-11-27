@@ -1,5 +1,13 @@
 # Run from hegel/. Config names are TOML basenames in resources/
 # (corpus20, corpus20_squeezed, moby_dick, hegel).
+#
+# The cc- recipes are routines for Claude Code; the hegel-lab skill
+# (../.claude/skills/hegel-lab) says when to use each and holds their scripts.
+
+set positional-arguments
+
+lab := justfile_directory() / "../.claude/skills/hegel-lab/scripts"
+sources := "src tests hegel_compile.py hegel_generate.py hegel_build.py"
 
 _default:
     @just --list --unsorted
@@ -19,3 +27,54 @@ chat config="hegel":
 # Continue a source string with the compiled transformer; no prompt = interactive
 run prompt="" config="corpus20":
     uv run python hegel_generate.py resources/{{ config }}.toml {{ if prompt == "" { "" } else { quote(prompt) } }}
+
+# Check formatting, lint, types and tests; changes nothing
+cc-check:
+    @uv run black --check {{ sources }} "{{ lab }}"
+    @uv run isort --check-only {{ sources }} "{{ lab }}"
+    @uv run flake8 --max-line-length 88 --extend-ignore E203 {{ sources }} "{{ lab }}"
+    @uv run mypy {{ sources }}
+    @MYPYPATH="{{ lab }}" uv run mypy "{{ lab }}"
+    @uv run pytest tests -q
+
+# Format with black and isort (rewrites files)
+cc-fmt:
+    @uv run black {{ sources }} "{{ lab }}"
+    @uv run isort {{ sources }} "{{ lab }}"
+
+# Run a command with its output in runs/<name>.log, timed, peak memory recorded: just cc-timed hegel-build just build hegel
+cc-timed name +command:
+    @uv run python "{{ lab }}/timed_run.py" "$@"
+
+# Which timed runs are going, the tail of each log, free memory
+cc-status lines="8":
+    @uv run python "{{ lab }}/status.py" {{ lines }}
+
+# Size up a corpus: tokens, contexts by length, contexts kept (no model)
+cc-stats config:
+    @PYTHONPATH=. uv run python "{{ lab }}/corpus_stats.py" "$@"
+
+# Held-out chain scores for several values of one setting: just cc-sweep moby_dick prune_threshold 0.2 0.5 1
+cc-sweep config setting +values:
+    @PYTHONPATH=. uv run python "{{ lab }}/sweep_chain.py" "$@"
+
+# Fidelity for several values of one squeeze setting: just cc-squeeze corpus20_squeezed logit_dim 64 128
+cc-squeeze config setting +values:
+    @PYTHONPATH=. uv run python "{{ lab }}/sweep_squeeze.py" "$@"
+
+# Load time and forward-pass time of saved weights
+cc-throughput config="hegel" tokens="1024":
+    @PYTHONPATH=. uv run python "{{ lab }}/throughput.py" "$@"
+
+# Run a scratch script with src.* and the lab helpers importable
+cc-py script *args:
+    @PYTHONPATH=".:{{ lab }}" uv run python "$@"
+
+# Stage everything in the repo, commit with the message in a file, push. Only with the user's OK.
+cc-commit message_file:
+    @git add -A :/
+    @git status --short
+    @git commit -q -F "$1"
+    @git push -q
+    @git log --oneline -1
+    @git status -sb | head -1

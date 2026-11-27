@@ -99,4 +99,5 @@ Thumbs.db
 /semantic/trained/
 /semantic/logs/
 /hegel/compiled/
+/hegel/runs/
 /hegel/resources/*.txt

@@ -92,7 +92,9 @@ src/verify.py           FidelityMeter, chain/model comparisons, coupled sampling
 src/checkpoint.py       save_weights, load_weights (model + tokenizer in one file)
 src/generation.py       respond: continue a source string
 tests/                  one test file per src module
-justfile                the compile, build, chat and run recipes
+justfile                the compile, build, chat and run recipes, and cc-*
+runs/                   logs of timed runs (just cc-timed); not in git
+../.claude/skills/hegel-lab/   the skill behind the cc- recipes, with scripts
 ```
 
 ```bash
@@ -108,13 +110,19 @@ just chat hegel                      # interactive, from the saved weights
 uv run python hegel_compile.py resources/corpus20_squeezed.toml
 uv run python hegel_generate.py resources/corpus20.toml "source string"
 uv run pytest tests        # 105 tests, about 15 s
-uv run black src tests hegel_compile.py hegel_generate.py hegel_build.py
-uv run isort src tests hegel_compile.py hegel_generate.py hegel_build.py
-uv run flake8 --max-line-length 88 --extend-ignore E203 src tests *.py
-uv run mypy src hegel_compile.py hegel_generate.py hegel_build.py
+just cc-check              # black, isort, flake8, mypy, pytest; changes nothing
+just cc-fmt                # black and isort, rewriting files
 ```
 
 Run from `hegel/`: scripts and tests import `src.*` relative to it.
+
+The `cc-` recipes script what kept being retyped: `cc-check`, `cc-fmt`,
+`cc-timed` and `cc-status` (long runs with a log, time and peak memory),
+`cc-stats` (size up a corpus), `cc-sweep` and `cc-squeeze` (one setting,
+several values), `cc-throughput`, `cc-py` (run a scratch script),
+`cc-commit` (stage all, commit from a message file, push). The
+`hegel-lab` skill says when to use each. Use them rather than typing the
+commands out; a measurement run twice becomes a script there with a recipe.
 
 Three scripts, three jobs. `hegel_compile.py` measures: it compiles on the
 training part of a held-out split, checks the transformer against its chain
