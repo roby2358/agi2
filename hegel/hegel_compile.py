@@ -12,10 +12,9 @@ from typing import List
 
 import numpy as np
 import torch
-from src.chain import Chain, build_chain, count_contexts
-from src.compiler import compile_wide
+from src.chain import Chain, build_chain
 from src.config import load_config
-from src.corpus import tokenize
+from src.pipeline import compile_from_config
 from src.verify import (
     Fidelity,
     compare_chains,
@@ -50,27 +49,30 @@ def main(argv: List[str]) -> int:
     config = load_config(argv[1])
     started = time.perf_counter()
 
-    text = Path(config.corpus).read_text(encoding="utf-8")
-    tokens, tokenizer = tokenize(text, config.vocab_size)
-    vocab = int(tokenizer.vocab_size)
+    compiled = compile_from_config(config)
+    tokens, tokenizer = compiled.tokens, compiled.tokenizer
+    chain, model = compiled.chain, compiled.model
+    vocab = chain.vocab_size
     print(f"Corpus: {config.corpus}")
-    print(f"  {len(text)} characters, {len(tokens)} tokens, vocabulary {vocab}")
-
-    counts = count_contexts(tokens, config.max_context)
-    full = build_chain(counts, vocab, config.max_context, config.floor)
-    chain = build_chain(
-        counts, vocab, config.max_context, config.floor, config.prune_threshold
+    print(
+        f"  {compiled.text_length} characters, {len(tokens)} tokens, "
+        f"vocabulary {vocab}"
     )
+
     _describe_chain(chain)
     if config.prune_threshold > 0.0:
+        full = build_chain(compiled.counts, vocab, config.max_context, config.floor)
         _report(
             f"Pruning cost: pruned chain against the unpruned chain "
             f"(threshold {config.prune_threshold} nats)",
             compare_chains(full, chain, tokens),
         )
 
-    model = compile_wide(chain)
-    print("\nModel (wide one-hot build, zero gradient steps)")
+    slots = "one-hot slots" if config.slot_dim == 0 else f"{config.slot_dim}-dim slots"
+    logits = (
+        "exact logits" if config.logit_dim == 0 else f"{config.logit_dim}-dim logits"
+    )
+    print(f"\nModel ({slots}, {logits}; zero gradient steps)")
     print(f"  d_model {model.d_model}, heads {model.n_heads}, d_ff {model.d_ff}")
     print(
         f"  weights {model.parameter_count()}, "

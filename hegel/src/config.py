@@ -19,6 +19,17 @@ class HegelConfig:
             vocabulary, so unseen next tokens stay finite in log space.
         prune_threshold: Minimum gain in nats (occurrences times KL from the
             backoff parent) for a context to be kept. 0 keeps every context.
+        slot_dim: Width of each token vector in the residual stream; 0 means
+            one-hot (the wide build).
+        logit_dim: Width of the output logit code; 0 means the full
+            vocabulary with exact log-probabilities.
+        match_threshold: How close to a full match a context neuron needs
+            before it fires at all, between 0 and 1. Used when slot_dim > 0.
+        unseen_weight: Weight of unseen tokens in the output fit. Used when
+            logit_dim > 0.
+        decoder_rounds: Alternating least-squares rounds for the output
+            factoring; 0 keeps a random decoder. Used when logit_dim > 0.
+        code_seed: Seed for the random token vectors and decoder.
         seed: Seed for sampling.
         sample_count: Number of side-by-side samples to print.
         sample_tokens: Tokens generated per sample.
@@ -30,6 +41,12 @@ class HegelConfig:
     max_context: int = 3
     floor: float = 1e-4
     prune_threshold: float = 0.0
+    slot_dim: int = 0
+    logit_dim: int = 0
+    match_threshold: float = 0.7
+    unseen_weight: float = 0.01
+    decoder_rounds: int = 4
+    code_seed: int = 0
     seed: int = 0
     sample_count: int = 4
     sample_tokens: int = 80
@@ -44,6 +61,14 @@ class HegelConfig:
             raise ValueError("floor must be strictly between 0 and 1")
         if self.prune_threshold < 0.0:
             raise ValueError("prune_threshold must not be negative")
+        if self.slot_dim < 0 or self.logit_dim < 0:
+            raise ValueError("slot_dim and logit_dim must not be negative")
+        if not 0.0 <= self.match_threshold < 1.0:
+            raise ValueError("match_threshold must be in [0, 1)")
+        if not 0.0 < self.unseen_weight <= 1.0:
+            raise ValueError("unseen_weight must be in (0, 1]")
+        if self.decoder_rounds < 0:
+            raise ValueError("decoder_rounds must not be negative")
 
 
 def load_config(path: str | Path) -> HegelConfig:

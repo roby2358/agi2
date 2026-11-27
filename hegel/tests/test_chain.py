@@ -59,6 +59,17 @@ class TestBuildChain:
         for i in range(len(STREAM)):
             assert matches[i] == chain.match(STREAM[: i + 1])
 
+    @pytest.mark.parametrize("threshold", [0.0, 0.5, 2.0])
+    def test_match_counts_agree_with_the_stream(self, threshold: float) -> None:
+        rng = np.random.default_rng(3)
+        tokens = [int(t) for t in rng.integers(4, size=400)] + [0, 1, 2] * 50
+        chain = build_chain(count_contexts(tokens, 3), 4, 3, prune_threshold=threshold)
+        # The last position predicts nothing, so it was never counted.
+        expected = np.bincount(
+            chain.match_stream(tokens)[:-1], minlength=len(chain.contexts)
+        )
+        assert np.array_equal(chain.match_counts(), expected)
+
     def test_unpruned_keeps_everything(self) -> None:
         counts = count_contexts(STREAM, 3)
         chain = build_chain(counts, 4, 3)

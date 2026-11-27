@@ -18,6 +18,8 @@ Shared at the root: `samples/` (corpora), `pyproject.toml` and `uv.lock` (one en
 uv sync                      # Install all dependencies
 ```
 
+The repo is shared between the host and a container, and each has its own venv: the host uses `.venv`, the container uses `.venv-container` (its `~/.bashrc` exports `UV_PROJECT_ENVIRONMENT=.venv-container`). Both are gitignored. Always go through `uv run` or `just`, never a hard-coded `.venv/bin/python`.
+
 ### Running (semantic)
 
 From anywhere in the repo, via the justfile. The model name is a TOML basename in `semantic/resources/`; names containing "rwkv" route to the RWKV scripts.
@@ -43,7 +45,9 @@ The `rwkv_*.py` scripts mirror these. `estimate_memory.py` at the root estimates
 ### Running (hegel)
 
 ```bash
-just hegel                          # hegel_compile.py resources/corpus20.toml
+just hegel                          # compile + verify: hegel_compile.py resources/corpus20.toml
+just hegel corpus20_squeezed        # the squeezed build
+just hegel-run "What ho"            # continue a source string; no string = interactive
 ```
 
 Details, tests and lint commands are in `hegel/CLAUDE.md`.

@@ -29,6 +29,10 @@ train model:
 hegel config="corpus20":
     cd hegel && uv run python hegel_compile.py resources/{{ config }}.toml
 
+# Continue a source string with the compiled transformer; no prompt = interactive
+hegel-run prompt="" config="corpus20":
+    cd hegel && uv run python hegel_generate.py resources/{{ config }}.toml {{ if prompt == "" { "" } else { quote(prompt) } }}
+
 # Generate from a trained model: just run lilwill_rwkv "What ho"
 run model prompt="Once upon a time":
     cd semantic && uv run python {{ if model =~ "rwkv" { "rwkv_generate.py" } else { "agi2_generate.py" } }} resources/{{ model }}.toml "{{ prompt }}"

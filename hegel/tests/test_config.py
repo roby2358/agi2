@@ -22,6 +22,11 @@ class TestHegelConfig:
             {"floor": 0.0},
             {"floor": 1.0},
             {"prune_threshold": -1.0},
+            {"slot_dim": -1},
+            {"logit_dim": -1},
+            {"match_threshold": 1.0},
+            {"unseen_weight": 0.0},
+            {"decoder_rounds": -1},
         ],
     )
     def test_rejects_bad_values(self, kwargs: dict[str, float]) -> None:
@@ -46,4 +51,5 @@ class TestHegelConfig:
 
     def test_shipped_config_loads(self) -> None:
         resources = Path(__file__).resolve().parents[1] / "resources"
-        assert load_config(resources / "corpus20.toml").max_context == 3
+        assert load_config(resources / "corpus20.toml").slot_dim == 0
+        assert load_config(resources / "corpus20_squeezed.toml").slot_dim == 32

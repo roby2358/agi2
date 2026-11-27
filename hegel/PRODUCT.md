@@ -131,23 +131,51 @@ transformer (`d_model` 2048, 2 heads, `d_ff` 24,419) then matches that chain
 at every position: mean KL 3e-7 nats, 100% top-1 agreement, and samples that
 are identical token for token. The whole run takes about 40 s on a CPU.
 
-So question 1 is answered yes for the exact build. It is not yet answered for
-a compressed one.
+So question 1 is answered yes for the exact build. The second milestone
+answers it for a compressed one.
 
 ## Second milestone
 
 The squeezed build: replace one-hot slots with short token vectors and the
-V-wide logit region with a lower-rank one, then report the same numbers.
+V-wide logit region with a lower-rank code, then report the same numbers.
 
-First scratch measurements say the two halves behave very differently:
+### Result
 
-- The input side squeezes almost for free. Random 32-dimensional token
-  vectors with a raised firing threshold reproduce the chain to within 1e-4
-  nats.
-- The output side does not squeeze by a plain SVD of the log-probability
-  table. Rank 256 of a possible 330 or so still costs about 0.3 nats, and
-  rank 64 costs 3.4. A random decoder does better at low rank (0.76 nats at
-  rank 64) but stalls at about 87% top-1 agreement.
+Done. With 32-dimensional random token vectors and a 128-dimensional logit
+code, `d_model` falls from 2048 to 224 and the weight count from 106 M to
+11 M. Against the same chain, over all corpus positions: mean KL 0.0022
+nats, 99.83% top-1 agreement, and the model's own score on the corpus moves
+from 0.5364 to 0.5389 nats per token. Samples read like the chain's.
+
+The two halves behaved very differently:
+
+- **The input side squeezes almost for free.** Random token vectors work as
+  long as a context neuron only fires when its match is nearly complete.
+  With a firing threshold, 24 to 32 dimensions are indistinguishable from
+  one-hot. Without one, thousands of near-miss contexts fire and the output
+  is noise.
+- **The output side needed a different kind of factoring.** A plain SVD of
+  the log-probability table is hopeless: rank 128 costs 1.9 nats, because the
+  chain's distributions are nearly one-hot and an even-handed fit spends its
+  rank on the entries that say "never". What works is a weighted fit that
+  gets each context's seen tokens right and only keeps the unseen ones low,
+  solved by alternating closed-form least squares between context codes and
+  token decoder vectors.
+
+Rank is a smooth dial: a 64-dimensional code costs 0.02 nats and 98.3%
+top-1, 32 costs 0.2 nats and 88.8%.
+
+One judgement call to note: alternating least squares iterates, though each
+step is a closed-form solve on the table and the model is never run. The
+strictly one-shot version (random decoder, one solve per context) costs
+about 0.018 nats at rank 128, and it mishandles contexts with many possible
+continuations.
+
+## Using it
+
+`hegel_generate.py` (or `just hegel-run "source string"`) compiles a model
+from a config and continues a source string; with no string it prompts
+interactively.
 
 ## Doors to look behind (question 2)
 
@@ -169,19 +197,26 @@ These are hypotheses to test once question 1 is answered, not claims.
 
 ## Open questions
 
-- **How to squeeze the output side.** The chain's distributions are nearly
-  one-hot, the worst case for a least-squares low-rank fit in log space. What
-  closed-form factoring respects the softmax, without a gradient step?
-- **How close is "pretty close"?** The exact build needs no threshold. One is
-  needed for the squeezed build; the pruning sweep shows cost rising steadily
-  with no knee, so it will be a choice and not a discovery.
+- **Held-out text.** All numbers so far are on the corpus the chain was
+  built from, where it mostly recalls (0.53 nats per token). Nothing yet says
+  how chain or transformer behave on text they have not seen, which is also
+  the only place generalisation could show.
+- **Shrinking `d_ff`.** After the squeeze, the feed-forward layer (one neuron
+  per kept context, 24,419 of them) is nearly all of the model. Pruning is
+  the only lever on it so far, and it costs fidelity steadily.
+- **Structured token vectors.** Random vectors make near-miss firing pure
+  noise, to be suppressed. Vectors that put similar tokens close together
+  could make it useful: a context neuron would fire for a context it never
+  saw. That is the route to generalisation, and it is untried.
+- **How close is "pretty close"?** Both the pruning sweep and the rank sweep
+  show cost rising steadily with no knee, so it is a choice and not a
+  discovery. The current defaults cost 0.010 nats (pruning) plus 0.002
+  (squeeze).
 - **Vocabulary size and context length.** Both drive table size. 512 and 3
   work; nothing else has been tried.
 - **Summing versus backoff.** Whether the original chain's summing across
   context lengths is worth expressing.
-- **In-sample only.** All numbers so far are on the corpus the chain was
-  built from, where it mostly recalls (0.53 nats per token). Nothing yet says
-  how chain or transformer behave on held-out text.
 
-Settled: credit assignment under backoff (dropped) and the floor for unseen
-tokens (uniform mixing at 1e-4); both are under "Decisions so far".
+Settled: credit assignment under backoff (dropped), the floor for unseen
+tokens (uniform mixing at 1e-4), and how to squeeze the output side (weighted
+alternating least squares).

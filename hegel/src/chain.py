@@ -99,6 +99,17 @@ class Chain:
         row: npt.NDArray[np.float64] = self.log_probs[self.match(history)]
         return row
 
+    def match_counts(self) -> npt.NDArray[np.int64]:
+        """
+        How often each kept context was the longest match, so the one that
+        predicted. A context's occurrences, less those of the kept contexts
+        that back off directly to it.
+        """
+        counts = np.asarray(self.occurrences, dtype=np.int64).copy()
+        for index in range(1, len(self.contexts)):
+            counts[self.parents[index]] -= self.occurrences[index]
+        return np.maximum(counts, 0)
+
     def kept_by_length(self) -> List[int]:
         """Number of kept contexts of each length, 0 to max_context."""
         kept = [0] * (self.max_context + 1)

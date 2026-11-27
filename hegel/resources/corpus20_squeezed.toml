@@ -1,0 +1,21 @@
+# corpus20 with the squeezed build: short random token vectors in the slots
+# and a narrow logit code. Compare with corpus20.toml, the exact wide build.
+# Usage (from hegel/): uv run python hegel_compile.py resources/corpus20_squeezed.toml
+
+corpus = "../samples/corpus20.txt"
+
+vocab_size = 512
+max_context = 3
+floor = 1e-4
+prune_threshold = 0.5
+
+slot_dim = 32            # token vector width; 0 = one-hot
+logit_dim = 128          # logit code width; 0 = full vocabulary, exact
+match_threshold = 0.7    # how near a full match a context neuron must be
+unseen_weight = 0.01     # weight of unseen tokens in the output factoring
+decoder_rounds = 4       # alternating least-squares rounds; 0 = random decoder
+code_seed = 0
+
+seed = 0
+sample_count = 4
+sample_tokens = 80
