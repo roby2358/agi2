@@ -1,0 +1,6 @@
+Score:   70
+ID: ship-ctx4-xkes
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: ship context 4 (or longer) in the configs. Kneser-Ney makes it pay on Hegel in the lean scorer (2.341 at context 3, 2.285 at 4, 2.266 at 5, 2.259 at 6, unpruned). Waits on the measurement of context 4 through the real builder. To settle with the user: which corpora (it may not pay on corpus20 or Moby Dick), which context length, what size and build time is acceptable (1.5 M distinct length-4 contexts on Hegel before pruning), whether the prune threshold or discount moves with it, and whether build_chain's dense 4 KB row per context has to be replaced by something sparse first. The compiler already handles any context length with one head per extra token.

@@ -1,0 +1,27 @@
+Score:   70
+ID: ship-ctx4-xkes
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: ship context 4 (or longer) in the configs. Kneser-Ney makes it pay on Hegel in the lean scorer (2.341 at context 3, 2.285 at 4, 2.266 at 5, 2.259 at 6, unpruned). Waits on the measurement of context 4 through the real builder. To settle with the user: which corpora (it may not pay on corpus20 or Moby Dick), which context length, what size and build time is acceptable (1.5 M distinct length-4 contexts on Hegel before pruning), whether the prune threshold or discount moves with it, and whether build_chain's dense 4 KB row per context has to be replaced by something sparse first. The compiler already handles any context length with one head per extra token.
+----
+Score:   60
+ID: loop-squeeze-bm6w
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: the looped block on the squeezed build. In the wide build the slots are exact, so looping should be exact. In the squeezed build each pass copies approximate 32-dim slots and subtracts the old ones, so error is fed back every pass; whether it stays bounded is unknown. To settle: is the copy actually lossy (head A's shift is a fixed linear map, so it may be exact even with random vectors and only the neuron thresholds matter), what fidelity loss is acceptable against the unlooped squeezed build, and whether the loop is wanted as the shipped architecture or as a demonstration. Related question the user raised: whether a single looped layer is really easier to compile than several distinct layers, and what a loop buys beyond saving heads (d_ff is unchanged, each pass costs a full forward pass); the appealing part is depth chosen at run time.
+----
+Score:   40
+ID: prune-c20-9h42
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: corpus20's prune threshold under Kneser-Ney. At the shipped 0.5 pruning now costs 0.06 nats held out (2.369 against 2.309 unpruned; under Witten-Bell it cost 0.013) and changes the top token on 14% of training text, with 11,370 contexts. Threshold 0.2 gives 16,649 contexts (about the old model size) and 2.339. It is a size-against-score call for the user; the discount interacts (0.7 at threshold 0.5 gives 2.343 with 14,208 contexts). On Moby Dick and Hegel pruning is nearly free, so only corpus20 is in question.
+----
+Score:   35
+ID: temp-build-tp5m
+Created: 2026-11-27T18:13:04Z
+Updated: 2026-11-27T18:13:04Z
+
+agi2/hegel: compile a calibration temperature into the model. If the chain is still overconfident under Kneser-Ney (to be measured), dividing its logits by a constant compiles as a rescaled decoder and output bias with no new parts. To settle: whether that belongs in the chain (so the chain stays the reference the transformer is checked against) or only in the transformer, how the value is chosen without tuning on the text it is scored on, and how it relates to the existing sampling `temperature` key.

@@ -70,20 +70,11 @@ transformer follows it at least as closely. It also makes context 4 and
 longer pay, which Witten-Bell did not (see "Smoothing for longer context");
 context 3 is still what ships.
 
-Next, agreed with the user (2026-11-27), in order:
-
-1. Context 4 on the chain: check `build_chain` fits on Hegel
-   (`just cc-timed ctx4 just cc-sweep hegel max_context 4`), then how many
-   contexts pruning keeps and whether rank 128 still follows the rows
-   (`just cc-squeeze`). The compiler already handles any context length
-   with one head per extra token.
-2. The looped block ("Looped block" below): one block applied once per
-   token of context, on the wide build first. The user wants longer
-   context and finds the looped architecture appealing in itself.
-
-Open and unexamined: corpus20's prune threshold under Kneser-Ney (0.2
-against the shipped 0.5), a discount per count, and the full
-`just compile hegel` check.
+What comes next is in the backlog, `pjpd/` in this directory (the
+`pjpd_*` tools, with Claude Code opened in `hegel/`; see the
+`pjpd-process` skill). Tasks are ready to work; ideas need a conversation
+with the user first. At the top: context 4 through the real chain builder,
+then the looped block on the wide build. Do not keep a to-do list here.
 
 Two extensions were measured as scratch scripts and not adopted: structured
 token vectors and a wide-window head (sections below). Both were measured
@@ -116,6 +107,7 @@ src/generation.py       respond: continue a source string
 tests/                  one test file per src module
 justfile                the compile, build, chat and run recipes, and cc-*
 runs/                   logs of timed runs (just cc-timed); not in git
+pjpd/                   the backlog: tasks.txt, ideas.txt (pjpd tools)
 ../.claude/skills/hegel-lab/   the skill behind the cc- recipes, with scripts
 ```
 
