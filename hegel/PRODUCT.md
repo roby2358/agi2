@@ -62,17 +62,19 @@ of the first run.
   the corpus's `<|endoftext|>` markers are removed. There are no paragraph
   groups, no Start/End markers and no resets, so every position is predicted
   the same way.
-- **Longest-match backoff.** The prediction comes from the longest context
-  that matches, with shorter contexts as fallback. This replaces the original
-  chain's summing of counts across context lengths, which a softmax output
-  cannot express directly. Summing may be revisited later.
+- **Longest-match backoff, smoothed.** The prediction comes from the longest
+  context that matches, with shorter contexts as fallback. What that context
+  predicts is its own frequencies mixed with the shorter contexts'
+  distributions. This stands in for the original chain's summing of counts
+  across context lengths, which a softmax output cannot express directly.
 - **Single-token suffixes.** The original chain can emit several tokens per
   step; a transformer emits one, so the chain stores one next token.
 - **Raw counts.** The original chain's MDL credit assignment exists to stop
   summed counts double-counting. Under backoff only one context predicts at a
   time, so it is dropped and pruning has its own rule (below).
-- **Floor for unseen tokens.** Every context's distribution is mixed with a
-  uniform one at weight 1e-4, so every log-probability is finite.
+- **Floor for unseen tokens.** The unigram distribution is mixed with a
+  uniform one at weight 1e-4, and smoothing passes that down to every
+  context, so every log-probability is finite.
 - **Held-out split.** A random 10% of the text, sampled as blocks of about
   1000 characters, is kept from the tokenizer and the chain and used only for
   scoring.
@@ -126,6 +128,10 @@ The smallest thing that answers question 1:
   and from the transformer.
 
 ### Result
+
+(Measured with the original hard-backoff chain built on the whole corpus;
+the same holds for the second milestone's numbers. Current numbers are under
+the third milestone.)
 
 Done, with the wide one-hot build. On corpus20 (54,944 tokens, vocabulary 512,
 context 3), pruning at 0.5 nats keeps 24,419 of 34,075 contexts for a mean
@@ -183,34 +189,59 @@ interactively.
 ## Held-out evaluation
 
 A random 10% of the corpus, sampled as blocks of about 1000 characters, is
-kept away from the tokenizer and the chain and used only for scoring. Two
-findings.
+kept away from the tokenizer and the chain and used only for scoring. The
+chain is scored on five different splits, because one split of a corpus this
+small swings by more than a nat. The model used for generation is built on
+the whole corpus; the split is for choosing settings.
 
-**The compile holds up on unseen text.** The wide build still matches its
-chain exactly. The squeezed build stays close: mean KL 0.016 nats and 97.9%
-top-1 agreement, against 0.002 and 99.8% on the training text.
+**The compile holds up on unseen text.** The wide build matches its chain
+exactly there too. The squeezed build is as close on held-out text as on
+training text.
 
-**The chain does not.** It scores 0.51 nats per token on its training text
-and 5.88 on held-out text. That is worse than unigram frequencies (5.32) and
-far worse than a chain with a single token of context (3.99); uniform
-guessing is 6.24. The cause is hard backoff with no hedging: a context seen
-once predicts its one continuation with near certainty, and about a third of
-held-out tokens land on the floor. Longer contexts make this worse, the
-reverse of what they do in-sample.
+**The original chain did not.** With hard backoff it scored 0.51 nats per
+token on its training text and 5.29 held out, about as bad as unigram
+frequencies (5.32) and far worse than a chain with one token of context
+(3.45). Its best guess was right as often as any other version's, 49% of the
+time. The trouble was certainty: a context seen once predicted its one
+continuation with near certainty, and a third of held-out tokens landed on
+the floor.
 
-Within the current design a much larger floor (0.1) and much harder pruning
-bring it to about 3.17. Mixing each context's distribution with the shorter
-context it backs off to (standard interpolated smoothing) reaches 2.66 in a
-scratch test, and makes longer contexts useful again.
+## Third milestone: a chain that hedges
 
-A curiosity: the squeezed transformer scores slightly better than its own
-chain on held-out text, 5.57 against 5.88. Its approximation error leaks a
-little probability onto tokens the chain forbids, which acts as a softer
-floor. It is an accident, not generalisation.
+Each context's distribution is now mixed with the distribution of the
+context one token shorter (Witten-Bell smoothing, which has no tunable: a
+context's own share grows with how often it was seen and shrinks with how
+many different continuations it had). The longest match still predicts
+alone; only what it says changed. Nothing in the compiler changed, since a
+neuron writes whatever distribution its context holds.
 
-A caution: on a corpus this small one split is a noisy measure. Six random
-splits put the chain between 4.65 and 5.88, and the shipped seed is the
-hardest of them. The ordering of methods is the same in every split.
+### Result
+
+Held-out, mean of five splits:
+
+| predictor | nats per token | top-1 accuracy |
+|---|---|---|
+| unigram | 5.32 | |
+| chain, 1 token of context | 3.45 | 17% |
+| hard backoff, 3 tokens | 5.29 | 49% |
+| smoothed, 3 tokens, as shipped | 2.47 | 48% |
+
+- Longer contexts help again, up to 3 tokens. A fourth adds nothing on this
+  corpus.
+- Pruning now barely affects held-out quality: keeping a quarter of the
+  contexts costs 0.06 nats. It costs fluency on the training text much more,
+  so the shipped threshold stays modest (17,812 contexts kept of 31,873).
+- The squeeze survives, at a price. Smoothed distributions are dense, so the
+  output factoring was reworked to weight each token by its probability.
+  At `d_model` 224 the squeezed build is within 0.012 nats of its chain and
+  agrees on the top token 99.0% of the time (0.002 and 99.8% under hard
+  backoff).
+- Samples at full temperature read rougher than before, because the chain
+  now gives real probability to off-script tokens. Generation uses a
+  temperature of 0.8.
+
+The shipped squeezed model: 8.3 M weights, 2.62 nats per token on held-out
+text.
 
 ## Doors to look behind (question 2)
 
@@ -232,27 +263,24 @@ These are hypotheses to test once question 1 is answered, not claims.
 
 ## Open questions
 
-- **Smoothing the chain.** Held-out evaluation shows the chain, not the
-  compile, is the weak link. Interpolating each context with its parent is
-  a change to the chain alone and the compiler does not care how a row was
-  made. But smoothed rows are dense, and the output factoring currently
-  relies on rows having few seen tokens. Does the squeeze survive it?
 - **Shrinking `d_ff`.** After the squeeze, the feed-forward layer (one neuron
-  per kept context, 24,419 of them) is nearly all of the model. Pruning is
-  the only lever on it so far, and it costs fidelity steadily.
+  per kept context, 17,812 of them) is nearly all of the model. Pruning is
+  the only lever on it so far. It is cheap on held-out text and costly on
+  the training text.
 - **Structured token vectors.** Random vectors make near-miss firing pure
   noise, to be suppressed. Vectors that put similar tokens close together
   could make it useful: a context neuron would fire for a context it never
-  saw. That is the route to generalisation, and it is untried.
+  saw. That is the route to generalisation, and it is untried. With a
+  calibrated chain and a held-out measure, an improvement would now show.
 - **How close is "pretty close"?** Both the pruning sweep and the rank sweep
   show cost rising steadily with no knee, so it is a choice and not a
-  discovery. The current defaults cost 0.010 nats (pruning) plus 0.002
-  (squeeze).
+  discovery. On held-out text the current defaults cost 0.013 nats
+  (pruning) and nothing measurable (squeeze).
 - **Vocabulary size and context length.** Both drive table size. 512 and 3
   work; nothing else has been tried.
-- **Summing versus backoff.** Whether the original chain's summing across
-  context lengths is worth expressing.
 
 Settled: credit assignment under backoff (dropped), the floor for unseen
-tokens (uniform mixing at 1e-4), and how to squeeze the output side (weighted
-alternating least squares).
+tokens (uniform mixing at 1e-4), how to squeeze the output side (weighted
+alternating least squares), and summing versus backoff (smoothing mixes
+context lengths inside each context's own distribution, which a softmax can
+express).

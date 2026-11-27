@@ -7,18 +7,22 @@ corpus = "../samples/corpus20.txt"
 vocab_size = 512
 max_context = 3
 floor = 1e-4
-holdout_fraction = 0.1   # a random 10% of the text is only used for scoring
-holdout_block = 1000     # sampled as blocks of about this many characters
-holdout_seed = 0
+smoothing = "witten_bell"
 prune_threshold = 0.5
+
+holdout_fraction = 0.1
+holdout_block = 1000
+holdout_seed = 0
+holdout_seeds = 5
 
 slot_dim = 32            # token vector width; 0 = one-hot
 logit_dim = 128          # logit code width; 0 = full vocabulary, exact
 match_threshold = 0.7    # how near a full match a context neuron must be
-unseen_weight = 0.01     # weight of unseen tokens in the output factoring
+low_weight = 0.003       # what a zero-probability token counts for in the factoring
 decoder_rounds = 4       # alternating least-squares rounds; 0 = random decoder
 code_seed = 0
 
 seed = 0
 sample_count = 4
 sample_tokens = 80
+temperature = 0.8        # for samples and generation; 1 = sample as is

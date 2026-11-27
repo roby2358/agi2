@@ -31,6 +31,9 @@ class Fidelity:
         reference_nll: Mean negative log-likelihood of the actual next token
             under the reference, in nats.
         other_nll: The same under the other predictor.
+        reference_accuracy: Fraction of positions where the reference's most
+            likely token is the actual next token.
+        other_accuracy: The same for the other predictor.
     """
 
     positions: int
@@ -40,6 +43,8 @@ class Fidelity:
     max_abs_diff: float
     reference_nll: float
     other_nll: float
+    reference_accuracy: float
+    other_accuracy: float
 
 
 class FidelityMeter:
@@ -54,6 +59,8 @@ class FidelityMeter:
         self._scored = 0
         self._reference_nll = 0.0
         self._other_nll = 0.0
+        self._reference_hits = 0
+        self._other_hits = 0
 
     def update(
         self,
@@ -84,6 +91,9 @@ class FidelityMeter:
         self._scored += int(scored.sum())
         self._reference_nll -= float(reference[rows[scored], targets[scored]].sum())
         self._other_nll -= float(other[rows[scored], targets[scored]].sum())
+        wanted = targets[scored]
+        self._reference_hits += int(np.sum(reference[scored].argmax(axis=1) == wanted))
+        self._other_hits += int(np.sum(other[scored].argmax(axis=1) == wanted))
 
     def result(self) -> Fidelity:
         """The accumulated Fidelity."""
@@ -97,6 +107,8 @@ class FidelityMeter:
             max_abs_diff=self._max_abs_diff,
             reference_nll=self._reference_nll / scored,
             other_nll=self._other_nll / scored,
+            reference_accuracy=self._reference_hits / scored,
+            other_accuracy=self._other_hits / scored,
         )
 
 
@@ -161,6 +173,22 @@ def compare_chains(
     return meter.result()
 
 
+def chain_score(chain: Chain, tokens: Sequence[int]) -> Tuple[float, float]:
+    """
+    How well a chain predicts a stream.
+
+    Returns:
+        (mean NLL in nats of the actual next token, fraction of positions
+        where the chain's most likely token is the actual next token).
+    """
+    if len(tokens) < 2:
+        return 0.0, 0.0
+    rows = chain.log_probs[chain.match_stream(tokens)[:-1]]
+    nexts = np.asarray(tokens[1:], dtype=np.int64)
+    nll = float(-rows[np.arange(len(nexts)), nexts].mean())
+    return nll, float(np.mean(rows.argmax(axis=1) == nexts))
+
+
 def unigram_nll(chain: Chain, tokens: Sequence[int]) -> float:
     """Mean NLL in nats of each next token under the chain's unigram row."""
     if len(tokens) < 2:
@@ -187,6 +215,7 @@ def sample(
     prompt: Sequence[int],
     length: int,
     draws: npt.NDArray[np.float64],
+    temperature: float = 1.0,
 ) -> List[int]:
     """
     Extend the prompt by `length` tokens.
@@ -194,10 +223,14 @@ def sample(
     Token t is chosen by inverting the predicted CDF at draws[t]. Two
     predictors given the same draws stay in step for as long as their
     distributions agree, so a divergence in the text is a real difference.
+
+    temperature divides the log-probabilities before sampling: below 1 the
+    likely tokens are favoured more, and 1 samples the distribution as it is.
     """
     history = list(prompt)
     for step in range(length):
-        cdf = np.cumsum(np.exp(predict(history)))
+        scaled = predict(history) / temperature
+        cdf = np.cumsum(np.exp(scaled - scaled.max()))
         token = int(np.searchsorted(cdf, draws[step] * cdf[-1], side="right"))
         history.append(min(token, len(cdf) - 1))
     return history[len(prompt) :]

@@ -1,18 +1,23 @@
-# First milestone: corpus20, small BPE vocabulary, context up to 3 tokens.
+# corpus20, the exact wide build: one-hot slots and a full-vocabulary logit
+# region. The transformer matches its chain to float rounding.
 # Usage (from hegel/): uv run python hegel_compile.py resources/corpus20.toml
 
 corpus = "../samples/corpus20.txt"
 
 vocab_size = 512
 max_context = 3          # tokens of context, counting the current one
-floor = 1e-4             # uniform mass mixed into every distribution
+floor = 1e-4             # uniform mass mixed into the unigram distribution
+smoothing = "witten_bell"  # or "none": each context's own frequencies only
+prune_threshold = 0.5    # nats; 0 keeps every context
+
 holdout_fraction = 0.1   # a random 10% of the text is only used for scoring
 holdout_block = 1000     # sampled as blocks of about this many characters
 holdout_seed = 0
-prune_threshold = 0.5    # nats; 0 keeps every context
+holdout_seeds = 5        # the chain is scored on this many different splits
 
 seed = 0
 sample_count = 4
 sample_tokens = 80
+temperature = 0.8        # for samples and generation; 1 = sample as is
 
 # checkpoint = "compiled/corpus20.pt"

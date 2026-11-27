@@ -1,18 +1,21 @@
 """
 Low-rank output factoring: next-token distributions through a narrow decoder.
 
-A plain SVD of the log-probability table fails here, because the rows are
-nearly one-hot and an even-handed least-squares fit in log space spends its
-rank on the thousands of floor entries. This module solves a weighted
-problem instead: every context wants its seen tokens' logits right and its
-unseen tokens merely low.
+A plain SVD of the log-probability table fails here: an even-handed
+least-squares fit in log space spends its rank on the many tokens a context
+gives almost no probability, and gets the few that matter wrong. This module
+solves a weighted problem instead:
 
     minimise  sum over contexts c, tokens v of
               row_weight[c] * token_weight[c, v]
               * (code[c] . decoder[v] - target[c, v])^2
 
-with target = log P(v | c) - floor on seen tokens and 0 on unseen ones, and
-token_weight = 1 on seen tokens, unseen_weight on unseen ones.
+- target[c, v] = log P(v | c) minus the row's lowest log-probability, so the
+  least likely tokens sit at 0 (softmax ignores the shared offset) and
+  0, the answer an untouched direction gives, means "unlikely".
+- token_weight[c, v] = P(v | c) / max_v P(v | c) + low_weight. The tokens a
+  context actually predicts are fitted closely; the rest only need to stay
+  low on the whole.
 
 Given the decoder, each context's code is one closed-form solve; given the
 codes, each token's decoder vector is one closed-form solve. Alternating the
@@ -28,6 +31,8 @@ import torch
 
 Matrix = npt.NDArray[np.float64]
 
+CHUNK_BYTES = 64 * 1024 * 1024
+
 
 def random_codes(count: int, dim: int, seed: int) -> Matrix:
     """One random unit vector of `dim` dimensions per item."""
@@ -37,108 +42,87 @@ def random_codes(count: int, dim: int, seed: int) -> Matrix:
     return unit
 
 
-def _seen_and_target(
-    log_probs: Matrix, floor_log_prob: float
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    table = torch.from_numpy(log_probs)
-    seen = table > floor_log_prob + 1e-9
-    return seen, seen.double() * (table - floor_log_prob)
+def targets_and_weights(log_probs: Matrix, low_weight: float) -> Tuple[Matrix, Matrix]:
+    """The fit's target logits and per-token weights; see the module docstring."""
+    target: Matrix = log_probs - log_probs.min(axis=1, keepdims=True)
+    weight: Matrix = np.exp(log_probs - log_probs.max(axis=1, keepdims=True))
+    return target, weight + low_weight
 
 
 def _solve_side(
-    seen: torch.Tensor,
-    rhs: torch.Tensor,
-    other: torch.Tensor,
-    other_weights: torch.Tensor,
-    unseen_weight: float,
-    chunk_bytes: int,
+    weight: torch.Tensor, rhs: torch.Tensor, other: torch.Tensor
 ) -> torch.Tensor:
     """
-    Solve one side of the factoring, one row of `seen` at a time.
+    Solve one side of the factoring.
 
-    Row i's normal matrix is
-        unseen_weight * sum_j w_j o_j o_j^T
-        + (1 - unseen_weight) * sum over seen j of w_j o_j o_j^T
-    where o_j are the rows of `other` and w_j their weights. The second sum
-    runs only over the few seen entries, which is what keeps this fast.
+    Row i's normal matrix is sum_j weight[i, j] * o_j o_j^T, where o_j are
+    the rows of `other`; its right-hand side is rhs[i].
     """
-    count, rank = seen.shape[0], other.shape[1]
-    weighted = other * other_weights[:, None]
-    base = unseen_weight * (weighted.T @ other)
-    base = base + 1e-9 * torch.eye(rank, dtype=torch.float64)
-    solved = torch.empty(count, rank, dtype=torch.float64)
-    chunk = max(1, chunk_bytes // (8 * rank * rank))
-    for start in range(0, count, chunk):
-        block = seen[start : start + chunk]
-        normal = torch.zeros(block.shape[0], rank * rank, dtype=torch.float64)
-        hits = block.nonzero()
-        for piece in range(0, len(hits), chunk):
-            part = hits[piece : piece + chunk]
-            left, right = weighted[part[:, 1]], other[part[:, 1]]
-            outer = (left[:, :, None] * right[:, None, :]).reshape(-1, rank * rank)
-            normal.index_add_(0, part[:, 0], outer)
-        normal = base[None] + (1.0 - unseen_weight) * normal.reshape(-1, rank, rank)
+    rank = other.shape[1]
+    outer = (other[:, :, None] * other[:, None, :]).reshape(-1, rank * rank)
+    ridge = 1e-9 * torch.eye(rank, dtype=torch.float64)
+    solved = torch.empty(weight.shape[0], rank, dtype=torch.float64)
+    chunk = max(1, CHUNK_BYTES // (8 * rank * rank))
+    for start in range(0, weight.shape[0], chunk):
+        normal = (weight[start : start + chunk] @ outer).reshape(-1, rank, rank)
         solved[start : start + chunk] = torch.linalg.solve(
-            normal, rhs[start : start + chunk]
+            normal + ridge, rhs[start : start + chunk]
         )
     return solved
 
 
-def fit_logit_codes(
-    log_probs: Matrix,
-    floor_log_prob: float,
-    decoder: Matrix,
-    unseen_weight: float,
-    chunk_bytes: int = 64 * 1024 * 1024,
-) -> Matrix:
+def fit_logit_codes(log_probs: Matrix, decoder: Matrix, low_weight: float) -> Matrix:
     """
     For every context, the code whose decoded logits best match its row.
 
     Args:
         log_probs: Next-token log-probabilities, shape (contexts, vocab).
-        floor_log_prob: The log-probability of a never-seen token.
         decoder: One vector per token, shape (vocab, rank).
-        unseen_weight: Weight of an unseen token's error; 1 is plain least
-            squares.
+        low_weight: Weight added to every token; what a token with no
+            probability still counts for.
 
     Returns:
         Codes, shape (contexts, rank). `codes @ decoder.T` are the logits.
     """
-    seen, target = _seen_and_target(log_probs, floor_log_prob)
+    target, weight = (
+        torch.from_numpy(m) for m in targets_and_weights(log_probs, low_weight)
+    )
     basis = torch.from_numpy(decoder)
-    ones = torch.ones(basis.shape[0], dtype=torch.float64)
-    codes = _solve_side(seen, target @ basis, basis, ones, unseen_weight, chunk_bytes)
+    codes = _solve_side(weight, (weight * target) @ basis, basis)
     result: Matrix = codes.numpy()
     return result
 
 
 def fit_decoder(
-    log_probs: Matrix,
-    floor_log_prob: float,
-    codes: Matrix,
-    unseen_weight: float,
-    row_weights: Matrix,
-    chunk_bytes: int = 64 * 1024 * 1024,
+    log_probs: Matrix, codes: Matrix, low_weight: float, row_weights: Matrix
 ) -> Matrix:
     """
     For every token, the decoder vector that best serves the given codes.
 
     Args:
         log_probs: Next-token log-probabilities, shape (contexts, vocab).
-        floor_log_prob: The log-probability of a never-seen token.
         codes: One code per context, shape (contexts, rank).
-        unseen_weight: Weight of an unseen token's error.
+        low_weight: Weight added to every token.
         row_weights: How much each context's error counts, shape (contexts,).
 
     Returns:
         Decoder, shape (vocab, rank).
     """
-    seen, target = _seen_and_target(log_probs, floor_log_prob)
+    target, weight = (
+        torch.from_numpy(m) for m in targets_and_weights(log_probs, low_weight)
+    )
     rows = torch.from_numpy(codes)
-    weights = torch.from_numpy(row_weights)
-    rhs = (target * weights[:, None]).T @ rows
-    decoder = _solve_side(
-        seen.T.contiguous(), rhs, rows, weights, unseen_weight, chunk_bytes
+    weight = weight * torch.from_numpy(row_weights)[:, None]
+    rank = rows.shape[1]
+    normal = torch.zeros(weight.shape[1], rank * rank, dtype=torch.float64)
+    chunk = max(1, CHUNK_BYTES // (8 * rank * rank))
+    for start in range(0, rows.shape[0], chunk):
+        part = rows[start : start + chunk]
+        outer = (part[:, :, None] * part[:, None, :]).reshape(-1, rank * rank)
+        normal += weight[start : start + chunk].T @ outer
+    ridge = 1e-9 * torch.eye(rank, dtype=torch.float64)
+    decoder = torch.linalg.solve(
+        normal.reshape(-1, rank, rank) + ridge, (weight * target).T @ rows
     )
     result: Matrix = decoder.numpy()
     return result
@@ -146,9 +130,8 @@ def fit_decoder(
 
 def factor_table(
     log_probs: Matrix,
-    floor_log_prob: float,
     rank: int,
-    unseen_weight: float,
+    low_weight: float,
     row_weights: Matrix,
     rounds: int,
     seed: int,
@@ -164,10 +147,8 @@ def factor_table(
         (decoder of shape (vocab, rank), codes of shape (contexts, rank)).
     """
     decoder = random_codes(log_probs.shape[1], rank, seed)
-    codes = fit_logit_codes(log_probs, floor_log_prob, decoder, unseen_weight)
+    codes = fit_logit_codes(log_probs, decoder, low_weight)
     for _ in range(rounds):
-        decoder = fit_decoder(
-            log_probs, floor_log_prob, codes, unseen_weight, row_weights
-        )
-        codes = fit_logit_codes(log_probs, floor_log_prob, decoder, unseen_weight)
+        decoder = fit_decoder(log_probs, codes, low_weight, row_weights)
+        codes = fit_logit_codes(log_probs, decoder, low_weight)
     return decoder, codes

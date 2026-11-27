@@ -4,6 +4,8 @@ import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from src.chain import SMOOTHINGS
+
 
 @dataclass(frozen=True)
 class HegelConfig:
@@ -22,6 +24,11 @@ class HegelConfig:
             scoring. 0 uses the whole corpus.
         holdout_block: Approximate block size in characters for the split.
         holdout_seed: Seed choosing which blocks are held out.
+        holdout_seeds: How many different random splits to score the chain
+            on (seeds holdout_seed, holdout_seed + 1, ...). The transformer
+            is compiled and checked on the first only.
+        smoothing: "none" (each context's own frequencies) or "witten_bell"
+            (mixed with the next shorter context's distribution).
         prune_threshold: Minimum gain in nats (occurrences times KL from the
             backoff parent) for a context to be kept. 0 keeps every context.
         slot_dim: Width of each token vector in the residual stream; 0 means
@@ -30,14 +37,16 @@ class HegelConfig:
             vocabulary with exact log-probabilities.
         match_threshold: How close to a full match a context neuron needs
             before it fires at all, between 0 and 1. Used when slot_dim > 0.
-        unseen_weight: Weight of unseen tokens in the output fit. Used when
-            logit_dim > 0.
+        low_weight: What a token with no probability still counts for in the
+            output factoring. Used when logit_dim > 0.
         decoder_rounds: Alternating least-squares rounds for the output
             factoring; 0 keeps a random decoder. Used when logit_dim > 0.
         code_seed: Seed for the random token vectors and decoder.
         seed: Seed for sampling.
         sample_count: Number of side-by-side samples to print.
         sample_tokens: Tokens generated per sample.
+        temperature: Sampling temperature for samples and generation. Below
+            1 favours likely tokens; 1 samples the distribution as it is.
         checkpoint: Where to save the compiled weights; empty to skip.
     """
 
@@ -48,16 +57,19 @@ class HegelConfig:
     holdout_fraction: float = 0.0
     holdout_block: int = 1000
     holdout_seed: int = 0
+    holdout_seeds: int = 1
+    smoothing: str = "none"
     prune_threshold: float = 0.0
     slot_dim: int = 0
     logit_dim: int = 0
     match_threshold: float = 0.7
-    unseen_weight: float = 0.01
+    low_weight: float = 0.003
     decoder_rounds: int = 4
     code_seed: int = 0
     seed: int = 0
     sample_count: int = 4
     sample_tokens: int = 80
+    temperature: float = 1.0
     checkpoint: str = ""
 
     def __post_init__(self) -> None:
@@ -71,14 +83,20 @@ class HegelConfig:
             raise ValueError("holdout_fraction must be in [0, 1)")
         if self.holdout_block < 1:
             raise ValueError("holdout_block must be at least 1")
+        if self.temperature <= 0.0:
+            raise ValueError("temperature must be positive")
+        if self.holdout_seeds < 1:
+            raise ValueError("holdout_seeds must be at least 1")
+        if self.smoothing not in SMOOTHINGS:
+            raise ValueError(f"smoothing must be one of {SMOOTHINGS}")
         if self.prune_threshold < 0.0:
             raise ValueError("prune_threshold must not be negative")
         if self.slot_dim < 0 or self.logit_dim < 0:
             raise ValueError("slot_dim and logit_dim must not be negative")
         if not 0.0 <= self.match_threshold < 1.0:
             raise ValueError("match_threshold must be in [0, 1)")
-        if not 0.0 < self.unseen_weight <= 1.0:
-            raise ValueError("unseen_weight must be in (0, 1]")
+        if not 0.0 < self.low_weight <= 1.0:
+            raise ValueError("low_weight must be in (0, 1]")
         if self.decoder_rounds < 0:
             raise ValueError("decoder_rounds must not be negative")
 

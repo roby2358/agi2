@@ -9,6 +9,7 @@ from src.chain import build_chain, count_contexts
 from src.compiler import compile_wide
 from src.verify import (
     FidelityMeter,
+    chain_score,
     compare_chains,
     compare_model_to_chain,
     model_predictor,
@@ -40,6 +41,7 @@ class TestFidelityMeter:
         assert result.kl_mean == 0.0
         assert result.top1_agreement == 1.0
         assert result.reference_nll == pytest.approx(-np.log(0.7))
+        assert result.reference_accuracy == 1.0
 
     def test_known_kl_and_disagreement(self) -> None:
         reference = np.log(np.array([[0.5, 0.5, 1e-12], [0.9, 0.1, 1e-12]]))
@@ -54,6 +56,9 @@ class TestFidelityMeter:
         # Row 0 is a tie in the reference, so either choice agrees.
         assert result.top1_agreement == 0.5
         assert result.other_nll == pytest.approx(-(np.log(0.75) + np.log(0.1)) / 2)
+        # Targets are 1 then 0; the reference picks 0, 0 and the other 1, 1.
+        assert result.reference_accuracy == 0.5
+        assert result.other_accuracy == 0.5
 
 
 @pytest.mark.unit
@@ -95,11 +100,30 @@ class TestUnigramNll:
 
 
 @pytest.mark.unit
+class TestChainScore:
+    def test_matches_a_direct_computation(self) -> None:
+        tokens = _stream()
+        chain = build_chain(count_contexts(tokens, 2), 5, 2)
+        nll, accuracy = chain_score(chain, tokens)
+        rows = [chain.next_log_probs(tokens[: i + 1]) for i in range(len(tokens) - 1)]
+        assert nll == pytest.approx(-np.mean([r[t] for r, t in zip(rows, tokens[1:])]))
+        hits = [int(r.argmax()) == t for r, t in zip(rows, tokens[1:])]
+        assert accuracy == pytest.approx(np.mean(hits))
+        assert chain_score(chain, [1]) == (0.0, 0.0)
+
+
+@pytest.mark.unit
 class TestSample:
     def test_inverts_the_cdf(self) -> None:
         logp = np.log(np.array([0.2, 0.5, 0.3]))
         draws = np.array([0.0, 0.19, 0.21, 0.69, 0.71, 0.999])
         assert sample(lambda history: logp, [0], 6, draws) == [0, 0, 1, 1, 2, 2]
+
+    def test_low_temperature_picks_the_likeliest_token(self) -> None:
+        logp = np.log(np.array([0.2, 0.5, 0.3]))
+        draws = np.array([0.05, 0.3, 0.6, 0.9])
+        assert sample(lambda history: logp, [0], 4, draws, 0.01) == [1, 1, 1, 1]
+        assert sample(lambda history: logp, [0], 4, draws, 1.0) == [0, 1, 1, 2]
 
     def test_chain_and_model_stay_in_step(self) -> None:
         tokens = _stream()

@@ -27,7 +27,7 @@ def compile_chain(
     slot_dim: int = 0,
     logit_dim: int = 0,
     match_threshold: float = 0.7,
-    unseen_weight: float = 0.01,
+    low_weight: float = 0.003,
     decoder_rounds: int = 4,
     code_seed: int = 0,
 ) -> HegelModel:
@@ -55,8 +55,8 @@ def compile_chain(
             exact log-probabilities.
         match_threshold: How far above length - 1 a score must be before the
             neuron fires at all, between 0 and 1. Irrelevant when one-hot.
-        unseen_weight: Weight of unseen tokens in the output factoring. Used
-            only when logit_dim > 0.
+        low_weight: What a token with no probability still counts for in the
+            output factoring. Used only when logit_dim > 0.
         decoder_rounds: Alternating least-squares rounds for the output
             factoring; 0 keeps a random decoder.
         code_seed: Seed for the random token vectors and decoder.
@@ -80,9 +80,8 @@ def compile_chain(
         row_weights = matched / matched.mean() + 1.0
         decoder, codes = factor_table(
             chain.log_probs,
-            float(np.log(chain.floor / vocab)),
             logit_dim,
-            unseen_weight,
+            low_weight,
             row_weights,
             decoder_rounds,
             code_seed + 1,

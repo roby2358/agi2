@@ -8,12 +8,13 @@ Usage (from hegel/):
 import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import torch
 from src.chain import Chain, build_chain
 from src.config import load_config
+from src.holdout import score_seeds
 from src.pipeline import compile_from_config
 from src.verify import (
     Fidelity,
@@ -21,7 +22,6 @@ from src.verify import (
     compare_model_to_chain,
     model_predictor,
     sample,
-    unigram_nll,
 )
 
 
@@ -34,6 +34,13 @@ def _report(title: str, fidelity: Fidelity) -> None:
     print(f"  max |log-prob diff|    {fidelity.max_abs_diff:.3e}")
     print(f"  reference NLL (nats)   {fidelity.reference_nll:.4f}")
     print(f"  compared NLL (nats)    {fidelity.other_nll:.4f}")
+
+
+def _spread(label: str, nll: List[float], accuracy: Optional[List[float]]) -> None:
+    line = f"  {label:<27} {np.mean(nll):.3f} [{min(nll):.3f}, {max(nll):.3f}]"
+    if accuracy is not None:
+        line += f"  {np.mean(accuracy):.1%} [{min(accuracy):.1%}, {max(accuracy):.1%}]"
+    print(line)
 
 
 def _describe_chain(chain: Chain) -> None:
@@ -65,7 +72,13 @@ def main(argv: List[str]) -> int:
 
     _describe_chain(chain)
     if config.prune_threshold > 0.0:
-        full = build_chain(compiled.counts, vocab, config.max_context, config.floor)
+        full = build_chain(
+            compiled.counts,
+            vocab,
+            config.max_context,
+            config.floor,
+            smoothing=config.smoothing,
+        )
         _report(
             f"Pruning cost: pruned chain against the unpruned chain "
             f"(threshold {config.prune_threshold} nats)",
@@ -93,26 +106,59 @@ def main(argv: List[str]) -> int:
     )
 
     if len(held_out) > 1:
+        scores = score_seeds(config)
+        print(
+            f"\nHeld-out text over {len(scores)} random split(s): "
+            "mean [lowest, highest]"
+        )
+        print("                              NLL (nats)            top-1 accuracy")
+        print(f"  uniform                     {np.log(vocab):.3f}")
+        _spread("unigram", [s.unigram_nll for s in scores], None)
+        _spread(
+            "chain, 1 token of context",
+            [s.short_nll for s in scores],
+            [s.short_accuracy for s in scores],
+        )
+        _spread(
+            "unpruned chain",
+            [s.unpruned_nll for s in scores],
+            [s.unpruned_accuracy for s in scores],
+        )
+        _spread(
+            "chain", [s.chain_nll for s in scores], [s.chain_accuracy for s in scores]
+        )
         on_chain = compare_model_to_chain(model, chain, held_out)
-        full = build_chain(compiled.counts, vocab, config.max_context, config.floor)
-        unpruned_nll = compare_chains(full, chain, held_out).reference_nll
-        print(f"\nHeld-out text: NLL in nats per token ({len(held_out)} tokens)")
-        print(f"  uniform over the vocabulary   {np.log(vocab):.4f}")
-        print(f"  unigram                       {unigram_nll(chain, held_out):.4f}")
-        print(f"  unpruned chain                {unpruned_nll:.4f}")
-        print(f"  chain                         {on_chain.reference_nll:.4f}")
-        print(f"  transformer                   {on_chain.other_nll:.4f}")
+        print(f"\nHeld-out text, split {config.holdout_seed} ({len(held_out)} tokens)")
+        print(
+            f"  chain                       {on_chain.reference_nll:.3f}"
+            f"                 {on_chain.reference_accuracy:.1%}"
+        )
+        print(
+            f"  transformer                 {on_chain.other_nll:.3f}"
+            f"                 {on_chain.other_accuracy:.1%}"
+        )
         _report("Fidelity on held-out text: transformer against its chain", on_chain)
 
     rng = np.random.default_rng(config.seed)
     predict_model = model_predictor(model)
-    print(f"\nSamples ({config.sample_tokens} tokens each, shared random draws)")
+    print(
+        f"\nSamples ({config.sample_tokens} tokens each, temperature "
+        f"{config.temperature}, shared random draws)"
+    )
     for number in range(config.sample_count):
         start = int(rng.integers(0, len(tokens) - config.max_context))
         prompt = tokens[start : start + config.max_context]
         draws = rng.random(config.sample_tokens)
-        from_chain = sample(chain.next_log_probs, prompt, config.sample_tokens, draws)
-        from_model = sample(predict_model, prompt, config.sample_tokens, draws)
+        from_chain = sample(
+            chain.next_log_probs,
+            prompt,
+            config.sample_tokens,
+            draws,
+            config.temperature,
+        )
+        from_model = sample(
+            predict_model, prompt, config.sample_tokens, draws, config.temperature
+        )
         same = sum(a == b for a, b in zip(from_chain, from_model))
         print(f"\n[{number + 1}] prompt: {tokenizer.decode(prompt)!r}")
         print(f"  chain: {tokenizer.decode(from_chain)!r}")

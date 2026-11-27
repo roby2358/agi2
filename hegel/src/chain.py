@@ -19,6 +19,8 @@ Counts = Dict[Context, "Counter[int]"]
 
 ROOT: Context = ()
 
+SMOOTHINGS = ("none", "witten_bell")
+
 
 def count_contexts(tokens: Sequence[int], max_context: int) -> Counts:
     """
@@ -56,6 +58,7 @@ class Chain:
         vocab_size: Number of token ids.
         max_context: Longest context length considered.
         floor: Uniform mass mixed into every distribution.
+        smoothing: How a context's distribution was made; see build_chain.
         contexts: Kept contexts, shortest first; index 0 is the empty context.
         parents: For each kept context, the index of its longest kept proper
             suffix (what it backs off to); -1 for the empty context.
@@ -68,6 +71,7 @@ class Chain:
     vocab_size: int
     max_context: int
     floor: float
+    smoothing: str
     contexts: List[Context]
     parents: List[int]
     occurrences: List[int]
@@ -124,6 +128,7 @@ def build_chain(
     max_context: int,
     floor: float = 1e-4,
     prune_threshold: float = 0.0,
+    smoothing: str = "none",
 ) -> Chain:
     """
     Turn raw counts into a backoff chain, pruning contexts that add little.
@@ -134,10 +139,26 @@ def build_chain(
     log-likelihood the corpus loses if the context is dropped. It is kept
     when the gain reaches prune_threshold. The empty context is always kept.
 
+    smoothing decides what distribution a context holds:
+
+    - "none": its own relative frequencies, with the uniform floor. A
+      context seen once is certain of its one continuation.
+    - "witten_bell": its relative frequencies mixed with the distribution
+      of the context one token shorter (itself smoothed, down to the
+      floored unigram). The context's own share is n / (n + t), for n
+      occurrences and t distinct continuations, so a context seen once with
+      one continuation gets half the say. The shorter context here is always
+      the next one down, whether or not pruning keeps it.
+
+    The longest kept match still predicts alone; smoothing only changes what
+    it says.
+
     Raw counts are used as they are. The credit assignment of the original
     summed-count chain is not applied: under backoff only one context
     predicts at a time, so there is nothing to de-duplicate.
     """
+    if smoothing not in SMOOTHINGS:
+        raise ValueError(f"smoothing must be one of {SMOOTHINGS}, not {smoothing!r}")
     candidates = [0] * (max_context + 1)
     for context in counts:
         candidates[len(context)] += 1
@@ -149,6 +170,9 @@ def build_chain(
         _log_distribution(counts[ROOT], vocab_size, floor)
     ]
     index: Dict[Context, int] = {ROOT: 0}
+    # Smoothed probabilities of every context seen, kept or not, because a
+    # context mixes with the one a token shorter even when that one is pruned.
+    smoothed: Dict[Context, npt.NDArray[np.float64]] = {ROOT: np.exp(rows[0])}
 
     for context in sorted((c for c in counts if c), key=lambda c: (len(c), c)):
         parent = 0
@@ -157,8 +181,16 @@ def build_chain(
             if found is not None:
                 parent = found
                 break
-        row = _log_distribution(counts[context], vocab_size, floor)
         seen = sum(counts[context].values())
+        if smoothing == "witten_bell":
+            own = seen / (seen + len(counts[context]))
+            probs = (1.0 - own) * smoothed[context[1:]]
+            for token, count in counts[context].items():
+                probs[token] += own * count / seen
+            smoothed[context] = probs
+            row = np.log(probs)
+        else:
+            row = _log_distribution(counts[context], vocab_size, floor)
         if prune_threshold > 0.0:
             gain = seen * float(np.sum(np.exp(row) * (row - rows[parent])))
             if gain < prune_threshold:
@@ -173,6 +205,7 @@ def build_chain(
         vocab_size=vocab_size,
         max_context=max_context,
         floor=floor,
+        smoothing=smoothing,
         contexts=contexts,
         parents=parents,
         occurrences=occurrences,

@@ -53,6 +53,7 @@ def compile_from_config(config: HegelConfig) -> Compiled:
         config.max_context,
         config.floor,
         config.prune_threshold,
+        config.smoothing,
     )
     return Compiled(
         text_length=len(text),
@@ -66,7 +67,7 @@ def compile_from_config(config: HegelConfig) -> Compiled:
             slot_dim=config.slot_dim,
             logit_dim=config.logit_dim,
             match_threshold=config.match_threshold,
-            unseen_weight=config.unseen_weight,
+            low_weight=config.low_weight,
             decoder_rounds=config.decoder_rounds,
             code_seed=config.code_seed,
         ),

@@ -1,8 +1,9 @@
 """
 Give a compiled transformer a source string and print its continuation.
 
-The model is compiled fresh from the config each time (a few seconds, no
-training), so there is no checkpoint to keep in sync.
+The model is compiled fresh from the config each time (no training), so
+there is no checkpoint to keep in sync. It is built on the whole corpus: the
+config's held-out split is for choosing settings, not for the model you use.
 
 Usage (from hegel/):
     uv run python hegel_generate.py resources/corpus20.toml "source string"
@@ -13,6 +14,7 @@ Ctrl-D quits. Each response is a fresh random sample.
 """
 
 import sys
+from dataclasses import replace
 from typing import List
 
 import numpy as np
@@ -25,12 +27,21 @@ def main(argv: List[str]) -> int:
     if len(argv) not in (2, 3):
         print(__doc__)
         return 2
-    config = load_config(argv[1])
+    config = replace(load_config(argv[1]), holdout_fraction=0.0)
     compiled = compile_from_config(config)
     rng = np.random.default_rng()
 
     if len(argv) == 3:
-        print(argv[2] + respond(compiled, argv[2], config.sample_tokens, rng))
+        print(
+            argv[2]
+            + respond(
+                compiled,
+                argv[2],
+                config.sample_tokens,
+                rng,
+                temperature=config.temperature,
+            )
+        )
         return 0
 
     model = compiled.model
@@ -46,7 +57,16 @@ def main(argv: List[str]) -> int:
             break
         if not source.strip():
             break
-        print(source + respond(compiled, source, config.sample_tokens, rng))
+        print(
+            source
+            + respond(
+                compiled,
+                source,
+                config.sample_tokens,
+                rng,
+                temperature=config.temperature,
+            )
+        )
         print()
     return 0
 

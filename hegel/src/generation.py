@@ -14,6 +14,7 @@ def respond(
     length: int,
     rng: np.random.Generator,
     use_chain: bool = False,
+    temperature: float = 1.0,
 ) -> str:
     """
     Continue a source string.
@@ -28,6 +29,7 @@ def respond(
         length: Number of tokens to generate.
         rng: Source of randomness.
         use_chain: Sample from the chain instead of the transformer.
+        temperature: Below 1 favours likely tokens; 1 samples as is.
 
     Returns:
         Only the generated continuation, decoded to text.
@@ -42,6 +44,6 @@ def respond(
     predict: Callable[[Sequence[int]], LogProbs] = (
         compiled.chain.next_log_probs if use_chain else model_predictor(compiled.model)
     )
-    generated = sample(predict, prompt, length, rng.random(length))
+    generated = sample(predict, prompt, length, rng.random(length), temperature)
     whole = str(compiled.tokenizer.decode(prompt + generated))
     return whole[len(str(compiled.tokenizer.decode(prompt))) :]

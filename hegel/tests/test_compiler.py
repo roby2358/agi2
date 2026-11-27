@@ -63,6 +63,13 @@ class TestCompileWide:
         assert 1 < len(chain.contexts) < len(counts)
         assert _max_error(chain, tokens, double=True) < 1e-9
 
+    def test_reproduces_smoothed_chain(self) -> None:
+        tokens = _stream(6, 500, 6)
+        counts = count_contexts(tokens, 3)
+        chain = build_chain(counts, 6, 3, prune_threshold=0.5, smoothing="witten_bell")
+        assert 1 < len(chain.contexts) < len(counts)
+        assert _max_error(chain, tokens, double=True) < 1e-9
+
     def test_unseen_history_backs_off_like_the_chain(self) -> None:
         tokens = _stream(3, 300, 6)
         chain = build_chain(count_contexts(tokens, 3), 6, 3)
